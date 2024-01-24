@@ -17,11 +17,11 @@ Log.Level = 0
 --[[ Variables ]]
 
 local options = {
-    memoryUsage = true, -- Shows memory usage in the top left corner
+    memoryUsage = false, -- Shows memory usage in the top left corner
     drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
-    drawCurrentNode = true, -- Draws the current node
-    autoPath = false, -- Automatically walks to the goal
+    drawCurrentNode = false, -- Draws the current node
+    autoPath = true, -- Automatically walks to the goal
 }
 
 local currentNodeIndex = 1
