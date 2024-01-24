@@ -17,7 +17,7 @@ npm install luabundle
 
 Once it has installed, run Bundle.bat and after it finishes run BundleAndDeploy.bat
 
-Start TF2, inject LMAOBox, and go into a map.
+Start TF2, inject LMAOBox (not beta build), and go into a map.
 
 Go to the Lua tab in the menu and load "Lmaobot.lua"
 
