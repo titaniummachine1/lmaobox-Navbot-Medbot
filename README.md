@@ -15,7 +15,7 @@ After that, you open the Node.JS command prompt and execute
 npm install luabundle
 ```
 
-Once it has installed, run Bundle.bat and after it finishes rn BundleAndDeploy.bat
+Once it has installed, run Bundle.bat and after it finishes run BundleAndDeploy.bat
 
 Start TF2, inject LMAOBox, and go into a map.
 
