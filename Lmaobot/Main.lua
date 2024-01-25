@@ -38,6 +38,8 @@ local Tasks = table.readOnly {
 
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
+local jumptimer = 0;
+local jumpmax = 50
 
 --[[ Functions ]]
 
@@ -186,8 +188,14 @@ local function OnCreateMove(userCmd)
         end
 
         -- Jump if stuck
-        if currentNodeTicks > 100 then
+        if currentNodeTicks > 150 and not me:InCond(TFCond_Zoomed) then
+            --hold down jump for half a second
+            jumptimer = jumptimer + 1;
             userCmd.buttons = userCmd.buttons | IN_JUMP
+            if jumptimer == jumpmax then 
+                jumptimer = 0;
+                currentNodeTicks = 0
+            end    
         end
 
         -- Repath if stuck
