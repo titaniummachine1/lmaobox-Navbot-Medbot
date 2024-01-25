@@ -144,19 +144,20 @@ local function OnCreateMove(userCmd)
 
     -- Update the current task
     if taskTimer:Run(0.7) then
-        if me:GetHealth() < 75 then
+        -- make sure we're not being healed by a medic before running health logic
+        if me:GetHealth() < 75 and not me:InCond(TFCond_Healing) then
             if currentTask ~= Tasks.Health then
                 Log:Info("Switching to health task")
                 Navigation.ClearPath()
             end
-    
+
             currentTask = Tasks.Health
         else
             if currentTask ~= Tasks.Objective then
                 Log:Info("Switching to objective task")
                 Navigation.ClearPath()
             end
-    
+
             currentTask = Tasks.Objective
         end
     end
@@ -178,7 +179,6 @@ local function OnCreateMove(userCmd)
             currentNodeIndex = currentNodeIndex - 1
             if currentNodeIndex < 1 then
                 Navigation.ClearPath()
-                --options.autoPath = false
                 Log:Info("Reached end of path")
                 currentTask = Tasks.None
             end
@@ -333,6 +333,31 @@ callbacks.Register("FireGameEvent", "LNX.Lmaobot.FireGameEvent", OnGameEvent)
 Commands.Register("pf_reload", function()
     LoadNavFile()
 end)
+
+-- credits: snipergaming888 (Sydney)
+
+local switch = 0;
+local switchmax = 1;
+
+
+local function newmap_eventNav(event)
+    if event:GetName() == "game_newmap" then
+        client.Command("pf_reload", true)  
+    end
+end
+
+local function Restart(event)
+    if event:GetName() == "teamplay_round_start" then
+        switch = switch + 1;
+        client.Command("pf_reload", true)  
+            if switch == switchmax then 
+                switch = 0;
+            end    
+    end
+end  
+
+callbacks.Register("FireGameEvent", "newm_event", newmap_eventNav)
+callbacks.Register("FireGameEvent", "teamplay_restart_round", Restart)
 
 -- Calculates the path from start to goal
 Commands.Register("pf", function(args)
