@@ -143,7 +143,7 @@ local function OnCreateMove(userCmd)
     end
 
     -- Update the current task
-    if taskTimer:Run(3) then
+    if taskTimer:Run(0.7) then
         if me:GetHealth() < 100 then
             if currentTask ~= Tasks.Health then
                 Log:Info("Switching to health task")
@@ -152,35 +152,12 @@ local function OnCreateMove(userCmd)
     
             currentTask = Tasks.Health
         else
-            local controlPoints = entities.FindByClass("CObjectControlPoint")
-            local payloadCarts = entities.FindByClass("CObjectPayload")
-
-            local objectiveNode = nil
-
-            -- cp/koth
-            if #controlPoints > 0 then
-                objectiveNode = Navigation.GetClosestNode(controlPoints[1]:GetAbsOrigin())
-                Log:Info("switching to cp")
-            -- payload
-            elseif #payloadCarts > 0 then
-                objectiveNode = Navigation.GetClosestNode(payloadCarts[1]:GetAbsOrigin())
-                Log:Info("switching to pl")
-            else
-                -- ctf
-                if currentTask ~= Tasks.Objective then
-                    Log:Info("switching to CTF")
-                    Navigation.ClearPath()
-                end
-
-                currentTask = Tasks.Objective
+            if currentTask ~= Tasks.Objective then
+                Log:Info("Switching to objective task")
+                Navigation.ClearPath()
             end
-
-            if objectiveNode then
-                local startNode = Navigation.GetClosestNode(me:GetAbsOrigin())
-                Navigation.FindPath(startNode, objectiveNode)
-                currentNodeIndex = #Navigation.GetCurrentPath()
-                currentTask = Tasks.Objective
-            end
+    
+            currentTask = Tasks.Objective
         end
     end
 
@@ -230,24 +207,50 @@ local function OnCreateMove(userCmd)
         end
     else
         -- Generate new path
-
-        -- Get start (Local player position)
         local startNode = Navigation.GetClosestNode(myPos)
         local goalNode = nil
 
-        -- Get goal for the current task
         if currentTask == Tasks.Objective then
-            
-            -- Find the current flag (enemy or team)
-            local myItem = me:GetPropInt("m_hItem")
-            local flags = entities.FindByClass("CCaptureFlag")
-            for idx, entity in pairs(flags) do
-                local myTeam = entity:GetTeamNumber() == me:GetTeamNumber()
-                if (myItem > 0 and myTeam) or (myItem < 0 and not myTeam) then
-                    goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
-                    Log:Info("Found flag at node %d", goalNode.id)
-                    break
+            local objectives = nil
+
+            -- map check
+            if engine.GetMapName():lower():find("koth_") then
+                -- cp
+                objectives = entities.FindByClass("prop_dynamic")
+            elseif engine.GetMapName():lower():find("pl_") then
+                -- pl
+                objectives = entities.FindByClass("CObjectCartDispenser")
+            elseif engine.GetMapName():lower():find("ctf_") then
+                -- ctf
+                local myItem = me:GetPropInt("m_hItem")
+                local flags = entities.FindByClass("CCaptureFlag")
+                for idx, entity in pairs(flags) do
+                    local myTeam = entity:GetTeamNumber() == me:GetTeamNumber()
+                    if (myItem > 0 and myTeam) or (myItem < 0 and not myTeam) then
+                        goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
+                        Log:Info("Found flag at node %d", goalNode.id)
+                        break
+                    end
                 end
+            else
+                Log:Warn("map is NON EXISTANT RETARD")
+                return
+            end
+            
+            -- payload dist check
+            if entity then
+                local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
+                local thresholdDistance = 100
+
+                if distanceToPayload > thresholdDistance then
+                    Navigation.FindPath(startNode, goalNode)
+                    currentNodeIndex = #Navigation.GetCurrentPath()
+                end
+            end
+
+            if not goalNode then
+                currentTask = Tasks.Objective
+                Navigation.ClearPath()
             end
 
         elseif currentTask == Tasks.Health then
