@@ -152,12 +152,35 @@ local function OnCreateMove(userCmd)
     
             currentTask = Tasks.Health
         else
-            if currentTask ~= Tasks.Objective then
-                Log:Info("Switching to objective task")
-                Navigation.ClearPath()
+            local controlPoints = entities.FindByClass("CObjectControlPoint")
+            local payloadCarts = entities.FindByClass("CObjectPayload")
+
+            local objectiveNode = nil
+
+            -- cp/koth
+            if #controlPoints > 0 then
+                objectiveNode = Navigation.GetClosestNode(controlPoints[1]:GetAbsOrigin())
+                Log:Info("switching to cp")
+            -- payload
+            elseif #payloadCarts > 0 then
+                objectiveNode = Navigation.GetClosestNode(payloadCarts[1]:GetAbsOrigin())
+                Log:Info("switching to pl")
+            else
+                -- ctf
+                if currentTask ~= Tasks.Objective then
+                    Log:Info("switching to CTF")
+                    Navigation.ClearPath()
+                end
+
+                currentTask = Tasks.Objective
             end
-    
-            currentTask = Tasks.Objective
+
+            if objectiveNode then
+                local startNode = Navigation.GetClosestNode(me:GetAbsOrigin())
+                Navigation.FindPath(startNode, objectiveNode)
+                currentNodeIndex = #Navigation.GetCurrentPath()
+                currentTask = Tasks.Objective
+            end
         end
     end
 
