@@ -22,6 +22,7 @@ local options = {
     drawPath = true, -- Draws the path to the current goal
     drawCurrentNode = false, -- Draws the current node
     autoPath = true, -- Automatically walks to the goal
+    shouldfindhealth = true, -- Path to health
 }
 
 local currentNodeIndex = 1
@@ -39,7 +40,7 @@ local Tasks = table.readOnly {
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local jumptimer = 0;
-local jumpmax = 50
+local jumpmax = 25
 
 --[[ Functions ]]
 
@@ -146,7 +147,7 @@ local function OnCreateMove(userCmd)
     if taskTimer:Run(0.7) then
         -- make sure we're not being healed by a medic before running health logic
         if me:GetHealth() < 75 and not me:InCond(TFCond_Healing) then
-            if currentTask ~= Tasks.Health then
+            if currentTask ~= Tasks.Health and shouldfindhealth then
                 Log:Info("Switching to health task")
                 Navigation.ClearPath()
             end
@@ -188,8 +189,8 @@ local function OnCreateMove(userCmd)
         end
 
         -- Jump if stuck
-        if currentNodeTicks > 150 and not me:InCond(TFCond_Zoomed) then
-            --hold down jump for half a second
+        if currentNodeTicks > 175 and not me:InCond(TFCond_Zoomed) then
+            --hold down jump for half a second or something i dont know how long it is
             jumptimer = jumptimer + 1;
             userCmd.buttons = userCmd.buttons | IN_JUMP
             if jumptimer == jumpmax then 
