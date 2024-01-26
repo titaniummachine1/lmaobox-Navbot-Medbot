@@ -18,9 +18,9 @@ Log.Level = 0
 
 local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
-    drawNodes = false, -- Draws all nodes on the map
+    drawNodes = true, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
-    drawCurrentNode = false, -- Draws the current node
+    drawCurrentNode = true, -- Draws the current node
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
 }
@@ -40,7 +40,6 @@ local Tasks = table.readOnly {
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local jumptimer = 0;
-local jumpmax = 25
 
 --[[ Functions ]]
 
@@ -50,6 +49,77 @@ local function LoadNavFile()
     local navFile = string.gsub(mapFile, ".bsp", ".nav")
 
     Navigation.LoadFile(navFile)
+end
+
+
+local function Draw3DBox(size, pos)
+    local halfSize = size / 2
+    if not corners then
+        corners1 = {
+            Vector3(-halfSize, -halfSize, -halfSize),
+            Vector3(halfSize, -halfSize, -halfSize),
+            Vector3(halfSize, halfSize, -halfSize),
+            Vector3(-halfSize, halfSize, -halfSize),
+            Vector3(-halfSize, -halfSize, halfSize),
+            Vector3(halfSize, -halfSize, halfSize),
+            Vector3(halfSize, halfSize, halfSize),
+            Vector3(-halfSize, halfSize, halfSize)
+        }
+    end
+
+    local linesToDraw = {
+        {1, 2}, {2, 3}, {3, 4}, {4, 1},
+        {5, 6}, {6, 7}, {7, 8}, {8, 5},
+        {1, 5}, {2, 6}, {3, 7}, {4, 8}
+    }
+
+    local screenPositions = {}
+    for _, cornerPos in ipairs(corners1) do
+        local worldPos = pos + cornerPos
+        local screenPos = client.WorldToScreen(worldPos)
+        if screenPos then
+            table.insert(screenPositions, { x = screenPos[1], y = screenPos[2] })
+        end
+    end
+
+    for _, line in ipairs(linesToDraw) do
+        local p1, p2 = screenPositions[line[1]], screenPositions[line[2]]
+        if p1 and p2 then
+            draw.Line(p1.x, p1.y, p2.x, p2.y)
+        end
+    end
+end
+
+-- Normalize a vector
+local function NormalizeVector(v)
+    local length = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+    return Vector3(v.x / length, v.y / length, v.z / length)
+end
+
+local function arrowPathArrow2(startPos, endPos, width)
+    if not (startPos and endPos) then return nil, nil end
+
+    local direction = endPos - startPos
+    local length = direction:Length()
+    if length == 0 then return nil, nil end
+    direction = NormalizeVector(direction)
+
+    local perpDir = Vector3(-direction.y, direction.x, 0)
+    local leftBase = startPos + perpDir * width
+    local rightBase = startPos - perpDir * width
+
+    local screenStartPos = client.WorldToScreen(startPos)
+    local screenEndPos = client.WorldToScreen(endPos)
+    local screenLeftBase = client.WorldToScreen(leftBase)
+    local screenRightBase = client.WorldToScreen(rightBase)
+
+    if screenStartPos and screenEndPos and screenLeftBase and screenRightBase then
+        draw.Line(screenStartPos[1], screenStartPos[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenLeftBase[1], screenLeftBase[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenRightBase[1], screenRightBase[2], screenEndPos[1], screenEndPos[2])
+    end
+
+    return leftBase, rightBase
 end
 
 --[[ Callbacks ]]
@@ -91,8 +161,11 @@ local function OnDraw()
             local screenPos = client.WorldToScreen(nodePos)
             if not screenPos then goto continue end
 
+            local x, y = screenPos[1], screenPos[2]
+            draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square centered at (x, y)
+
             -- Node IDs
-            draw.Text(screenPos[1], screenPos[2], tostring(id))
+            draw.Text(screenPos[1], screenPos[2] + 10, tostring(id))
 
             ::continue::
         end
@@ -102,20 +175,33 @@ local function OnDraw()
     if options.drawPath and currentPath then
         draw.Color(255, 255, 0, 255)
 
-        for i = 1, #currentPath - 1 do
+        local lastLeftBaseScreen, lastRightBaseScreen = nil, nil
+
+        for i = #currentPath, 2, -1 do
             local node1 = currentPath[i]
-            local node2 = currentPath[i + 1]
+            local node2 = currentPath[i - 1]
 
             local node1Pos = Vector3(node1.x, node1.y, node1.z)
             local node2Pos = Vector3(node2.x, node2.y, node2.z)
 
-            local screenPos1 = client.WorldToScreen(node1Pos)
-            local screenPos2 = client.WorldToScreen(node2Pos)
-            if not screenPos1 or not screenPos2 then goto continue end
+            if node1Pos and node2Pos then
+                local leftBase, rightBase = arrowPathArrow2(node1Pos, node2Pos, 30)
 
-            draw.Line(screenPos1[1], screenPos1[2], screenPos2[1], screenPos2[2])
+                if leftBase and rightBase then
+                    local screenLeftBase = client.WorldToScreen(leftBase)
+                    local screenRightBase = client.WorldToScreen(rightBase)
 
-            ::continue::
+                    if screenLeftBase and screenRightBase then
+                        if lastLeftBaseScreen and lastRightBaseScreen then
+                            draw.Line(lastLeftBaseScreen[1], lastLeftBaseScreen[2], screenLeftBase[1], screenLeftBase[2])
+                            draw.Line(lastRightBaseScreen[1], lastRightBaseScreen[2], screenRightBase[1], screenRightBase[2])
+                        end
+
+                        lastLeftBaseScreen = screenLeftBase
+                        lastRightBaseScreen = screenRightBase
+                    end
+                end
+            end
         end
     end
 
@@ -128,6 +214,7 @@ local function OnDraw()
 
         local screenPos = client.WorldToScreen(currentNodePos)
         if screenPos then
+            Draw3DBox(20, currentNodePos)
             draw.Text(screenPos[1], screenPos[2], tostring(currentNodeIndex))
         end
     end
@@ -170,6 +257,7 @@ local function OnCreateMove(userCmd)
 
     if currentPath then
         -- Move along path
+
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
 
@@ -184,22 +272,6 @@ local function OnCreateMove(userCmd)
             end
         else
             currentNodeTicks = currentNodeTicks + 1
-
-            -- Check if the next node is closer
-            if currentNodeIndex > 1 then
-                local nextNode = currentPath[currentNodeIndex - 1]
-                local nextNodePos = Vector3(nextNode.x, nextNode.y, nextNode.z)
-                local nextDist = (myPos - nextNodePos):Length()
-
-                if nextDist < dist then
-                    Log:Info("Skipping to closer node %d", currentNodeIndex - 1)
-                    currentNodeIndex = currentNodeIndex - 1
-                    currentNode = nextNode
-                    currentNodePos = nextNodePos
-                    dist = nextDist
-                end
-            end
-
             Lib.TF2.Helpers.WalkTo(userCmd, me, currentNodePos)
         end
 
@@ -208,13 +280,6 @@ local function OnCreateMove(userCmd)
             --hold down jump for half a second or something i dont know how long it is
             jumptimer = jumptimer + 1;
             userCmd.buttons = userCmd.buttons | IN_JUMP
-            if gui.GetValue("Duck Jump") == 0 then
-                userCmd.buttons = userCmd.buttons | IN_DUCK --jump duck ineffective but code efficient
-            end
-            if jumptimer == jumpmax then
-                jumptimer = 0;
-                -- currentNodeTicks = 0 -- Removed this line
-            end
         end
 
         -- Repath if stuck
@@ -230,21 +295,21 @@ local function OnCreateMove(userCmd)
         end
     else
         -- Generate new path
-        local startNode = Navigation.GetClosestNode(myPos)
-        local goalNode = nil
-        local entity = nil
+		local startNode = Navigation.GetClosestNode(myPos)
+		local goalNode = nil
+		local entity = nil
 
-        if currentTask == Tasks.Objective then
-            local objectives = nil
+		if currentTask == Tasks.Objective then
+		    local objectives = nil
 
-            -- map check
-            if engine.GetMapName():lower():find("cp_") then
-                -- cp
-                objectives = entities.FindByClass("CTFObjectiveResource")
-            elseif engine.GetMapName():lower():find("pl_") then
-                -- pl
-                objectives = entities.FindByClass("CObjectCartDispenser")
-            elseif engine.GetMapName():lower():find("ctf_") then
+		    -- map check
+		    if engine.GetMapName():lower():find("cp_") then
+		        -- cp
+		        objectives = entities.FindByClass("CObjectControlPoint")
+		    elseif engine.GetMapName():lower():find("pl_") then
+		        -- pl
+		        objectives = entities.FindByClass("CObjectCartDispenser")
+		    elseif engine.GetMapName():lower():find("ctf_") then
                 -- ctf
                 local myItem = me:GetPropInt("m_hItem")
                 local flags = entities.FindByClass("CCaptureFlag")
@@ -256,16 +321,10 @@ local function OnCreateMove(userCmd)
                         break
                     end
                 end
-            else
-                Log:Warn("Unsupported Gamemode, try CTF or PL")
-                return
-            end
-
-            -- Ensure objectives is a table before iterating
-            if objectives and type(objectives) ~= "table" then
-                Log:Info("No objectives available")
-                return
-            end
+		    else
+		        Log:Warn("Unsupported Gamemode, try CTF or PL")
+		        return
+		    end
 
             -- Iterate through objectives and find the closest one
             if objectives then
@@ -280,51 +339,48 @@ local function OnCreateMove(userCmd)
                     end
                 end
             else
-                Log:Warn("No objectives found; iterate failure.")
+                Log:Warn("No objectives found")
             end
 
-            -- Check if the distance between player and payload is greater than a threshold
-            if engine.GetMapName():lower():find("pl_") then
-                if entity then
-                    local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
-                    local thresholdDistance = 80
+		    -- Check if the distance between player and payload is greater than a threshold
+		    if entity then
+		        local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
+		        local thresholdDistance = 300
+		
+		        if distanceToPayload > thresholdDistance then
+		            -- If too far, update the path to get closer
+		            Navigation.FindPath(startNode, goalNode)
+		            currentNodeIndex = #Navigation.GetCurrentPath()
+		        end
+		    end
+		
+		    if not goalNode then
+		        Log:Warn("No objectives found. Continuing with default objective task.")
+		        currentTask = Tasks.Objective
+		        Navigation.ClearPath()
+		    end
+		elseif currentTask == Tasks.Health then
+		    local closestDist = math.huge
+		    for idx, pos in pairs(healthPacks) do
+		        local dist = (myPos - pos):Length()
+		        if dist < closestDist then
+		            closestDist = dist
+		            goalNode = Navigation.GetClosestNode(pos)
+		            Log:Info("Found health pack at node %d", goalNode.id)
+		        end
+		    end
+		else
+		    Log:Debug("Unknown task: %d", currentTask)
+		    return
+		end
 
-                    if distanceToPayload > thresholdDistance then
-                        Log:Info("Payload too far from player, pathing closer.")
-                        -- If too far, update the path to get closer
-                        Navigation.FindPath(startNode, goalNode)
-                        currentNodeIndex = #Navigation.GetCurrentPath()
-                    end
-                end
-            end
+		-- Check if we found a start and goal node
+		if not startNode or not goalNode then
+		    Log:Warn("Could not find new start or goal node")
+		    return
+		end
 
-            if not goalNode then
-                Log:Warn("No objectives found. Continuing with default objective task.")
-                currentTask = Tasks.Objective
-                Navigation.ClearPath()
-            end
-        elseif currentTask == Tasks.Health then
-            local closestDist = math.huge
-            for idx, pos in pairs(healthPacks) do
-                local dist = (myPos - pos):Length()
-                if dist < closestDist then
-                    closestDist = dist
-                    goalNode = Navigation.GetClosestNode(pos)
-                    Log:Info("Found health pack at node %d", goalNode.id)
-                end
-            end
-        else
-            Log:Debug("Unknown task: %d", currentTask)
-            return
-        end
-
-        -- Check if we found a start and goal node
-        if not startNode or not goalNode then
-            Log:Warn("Could not find new start or goal node")
-            return
-        end
-
-        -- Update the pathfinder
+		-- Update the pathfinder
         Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
         Navigation.FindPath(startNode, goalNode)
 
