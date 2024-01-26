@@ -265,6 +265,7 @@ local function OnCreateMove(userCmd)
         if dist < 22 then
             currentNodeTicks = 0
             currentNodeIndex = currentNodeIndex - 1
+            table.remove(currentPath)
             if currentNodeIndex < 1 then
                 Navigation.ClearPath()
                 Log:Info("Reached end of path")
