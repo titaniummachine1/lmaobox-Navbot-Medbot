@@ -40,7 +40,6 @@ local Tasks = table.readOnly {
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local jumptimer = 0;
-local jumpmax = 25
 
 --[[ Functions ]]
 
@@ -189,14 +188,10 @@ local function OnCreateMove(userCmd)
         end
 
         -- Jump if stuck
-        if currentNodeTicks > 175 and not me:InCond(TFCond_Zoomed) then
+        if currentNodeTicks > 100 and not me:InCond(TFCond_Zoomed) then
             --hold down jump for half a second or something i dont know how long it is
             jumptimer = jumptimer + 1;
             userCmd.buttons = userCmd.buttons | IN_JUMP
-            if jumptimer == jumpmax then 
-                jumptimer = 0;
-                currentNodeTicks = 0
-            end    
         end
 
         -- Repath if stuck
@@ -237,6 +232,18 @@ local function OnCreateMove(userCmd)
 		    else
 		        Log:Warn("Unsupported Gamemode, try CTF or PL")
 		        return
+		    end
+		
+		    -- Iterate through objectives and find the closest one
+		    local closestDist = math.huge
+		    for idx, ent in pairs(objectives) do
+		        local dist = (myPos - ent:GetAbsOrigin()):Length()
+		        if dist < closestDist then
+		            closestDist = dist
+		            goalNode = Navigation.GetClosestNode(ent:GetAbsOrigin())
+		            entity = ent
+		            Log:Info("Found objective at node %d", goalNode.id)
+		        end
 		    end
 		
 		    -- Check if the distance between player and payload is greater than a threshold
