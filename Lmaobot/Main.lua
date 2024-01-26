@@ -239,18 +239,6 @@ local function OnCreateMove(userCmd)
 		        return
 		    end
 		
-		    -- Iterate through objectives and find the closest one
-		    local closestDist = math.huge
-		    for idx, ent in pairs(objectives) do
-		        local dist = (myPos - ent:GetAbsOrigin()):Length()
-		        if dist < closestDist then
-		            closestDist = dist
-		            goalNode = Navigation.GetClosestNode(ent:GetAbsOrigin())
-		            entity = ent
-		            Log:Info("Found objective at node %d", goalNode.id)
-		        end
-		    end
-		
 		    -- Check if the distance between player and payload is greater than a threshold
 		    if entity then
 		        local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
