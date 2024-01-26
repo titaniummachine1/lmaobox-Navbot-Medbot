@@ -6,7 +6,7 @@ Support: https://dsc.gg/rosnehook
 Credits for original code: Inx00
 
 # How to use
-First, go to https://nodejs.org/ and donwload and install the stable version of Node.JS
+First, go to https://nodejs.org/ and download and install the stable version of Node.JS
 
 Next, go to releases and download the source code (zip) and unzip it to any place you want.
 
@@ -22,3 +22,5 @@ Start TF2, inject LMAOBox (not beta build), and go into a map.
 Go to the Lua tab in the menu and load "Lmaobot.lua"
 
 Enjoy NavBot on LMAOBox!
+
+# NOTE: SOME LUAS BREAK THE NAVBOT
