@@ -18,9 +18,9 @@ Log.Level = 0
 
 local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
-    drawNodes = false, -- Draws all nodes on the map
+    drawNodes = true, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
-    drawCurrentNode = false, -- Draws the current node
+    drawCurrentNode = true, -- Draws the current node
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
 }
@@ -40,7 +40,6 @@ local Tasks = table.readOnly {
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local jumptimer = 0;
-local jumpmax = 25
 
 --[[ Functions ]]
 
@@ -50,6 +49,77 @@ local function LoadNavFile()
     local navFile = string.gsub(mapFile, ".bsp", ".nav")
 
     Navigation.LoadFile(navFile)
+end
+
+
+local function Draw3DBox(size, pos)
+    local halfSize = size / 2
+    if not corners then
+        corners1 = {
+            Vector3(-halfSize, -halfSize, -halfSize),
+            Vector3(halfSize, -halfSize, -halfSize),
+            Vector3(halfSize, halfSize, -halfSize),
+            Vector3(-halfSize, halfSize, -halfSize),
+            Vector3(-halfSize, -halfSize, halfSize),
+            Vector3(halfSize, -halfSize, halfSize),
+            Vector3(halfSize, halfSize, halfSize),
+            Vector3(-halfSize, halfSize, halfSize)
+        }
+    end
+
+    local linesToDraw = {
+        {1, 2}, {2, 3}, {3, 4}, {4, 1},
+        {5, 6}, {6, 7}, {7, 8}, {8, 5},
+        {1, 5}, {2, 6}, {3, 7}, {4, 8}
+    }
+
+    local screenPositions = {}
+    for _, cornerPos in ipairs(corners1) do
+        local worldPos = pos + cornerPos
+        local screenPos = client.WorldToScreen(worldPos)
+        if screenPos then
+            table.insert(screenPositions, { x = screenPos[1], y = screenPos[2] })
+        end
+    end
+
+    for _, line in ipairs(linesToDraw) do
+        local p1, p2 = screenPositions[line[1]], screenPositions[line[2]]
+        if p1 and p2 then
+            draw.Line(p1.x, p1.y, p2.x, p2.y)
+        end
+    end
+end
+
+-- Normalize a vector
+local function NormalizeVector(v)
+    local length = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+    return Vector3(v.x / length, v.y / length, v.z / length)
+end
+
+local function arrowPathArrow2(startPos, endPos, width)
+    if not (startPos and endPos) then return nil, nil end
+
+    local direction = endPos - startPos
+    local length = direction:Length()
+    if length == 0 then return nil, nil end
+    direction = NormalizeVector(direction)
+
+    local perpDir = Vector3(-direction.y, direction.x, 0)
+    local leftBase = startPos + perpDir * width
+    local rightBase = startPos - perpDir * width
+
+    local screenStartPos = client.WorldToScreen(startPos)
+    local screenEndPos = client.WorldToScreen(endPos)
+    local screenLeftBase = client.WorldToScreen(leftBase)
+    local screenRightBase = client.WorldToScreen(rightBase)
+
+    if screenStartPos and screenEndPos and screenLeftBase and screenRightBase then
+        draw.Line(screenStartPos[1], screenStartPos[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenLeftBase[1], screenLeftBase[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenRightBase[1], screenRightBase[2], screenEndPos[1], screenEndPos[2])
+    end
+
+    return leftBase, rightBase
 end
 
 --[[ Callbacks ]]
@@ -91,8 +161,11 @@ local function OnDraw()
             local screenPos = client.WorldToScreen(nodePos)
             if not screenPos then goto continue end
 
+            local x, y = screenPos[1], screenPos[2]
+            draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square centered at (x, y)
+
             -- Node IDs
-            draw.Text(screenPos[1], screenPos[2], tostring(id))
+            draw.Text(screenPos[1], screenPos[2] + 10, tostring(id))
 
             ::continue::
         end
@@ -102,20 +175,33 @@ local function OnDraw()
     if options.drawPath and currentPath then
         draw.Color(255, 255, 0, 255)
 
-        for i = 1, #currentPath - 1 do
+        local lastLeftBaseScreen, lastRightBaseScreen = nil, nil
+
+        for i = #currentPath, 2, -1 do
             local node1 = currentPath[i]
-            local node2 = currentPath[i + 1]
+            local node2 = currentPath[i - 1]
 
             local node1Pos = Vector3(node1.x, node1.y, node1.z)
             local node2Pos = Vector3(node2.x, node2.y, node2.z)
 
-            local screenPos1 = client.WorldToScreen(node1Pos)
-            local screenPos2 = client.WorldToScreen(node2Pos)
-            if not screenPos1 or not screenPos2 then goto continue end
+            if node1Pos and node2Pos then
+                local leftBase, rightBase = arrowPathArrow2(node1Pos, node2Pos, 30)
 
-            draw.Line(screenPos1[1], screenPos1[2], screenPos2[1], screenPos2[2])
+                if leftBase and rightBase then
+                    local screenLeftBase = client.WorldToScreen(leftBase)
+                    local screenRightBase = client.WorldToScreen(rightBase)
 
-            ::continue::
+                    if screenLeftBase and screenRightBase then
+                        if lastLeftBaseScreen and lastRightBaseScreen then
+                            draw.Line(lastLeftBaseScreen[1], lastLeftBaseScreen[2], screenLeftBase[1], screenLeftBase[2])
+                            draw.Line(lastRightBaseScreen[1], lastRightBaseScreen[2], screenRightBase[1], screenRightBase[2])
+                        end
+
+                        lastLeftBaseScreen = screenLeftBase
+                        lastRightBaseScreen = screenRightBase
+                    end
+                end
+            end
         end
     end
 
@@ -128,6 +214,7 @@ local function OnDraw()
 
         local screenPos = client.WorldToScreen(currentNodePos)
         if screenPos then
+            Draw3DBox(20, currentNodePos)
             draw.Text(screenPos[1], screenPos[2], tostring(currentNodeIndex))
         end
     end
@@ -170,6 +257,7 @@ local function OnCreateMove(userCmd)
 
     if currentPath then
         -- Move along path
+
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
 
@@ -177,6 +265,7 @@ local function OnCreateMove(userCmd)
         if dist < 22 then
             currentNodeTicks = 0
             currentNodeIndex = currentNodeIndex - 1
+            table.remove(currentPath)
             if currentNodeIndex < 1 then
                 Navigation.ClearPath()
                 Log:Info("Reached end of path")
@@ -208,13 +297,6 @@ local function OnCreateMove(userCmd)
             --hold down jump for half a second or something i dont know how long it is
             jumptimer = jumptimer + 1;
             userCmd.buttons = userCmd.buttons | IN_JUMP
-            if gui.GetValue("Duck Jump") == 0 then
-                userCmd.buttons = userCmd.buttons | IN_DUCK --jump duck ineffective but code efficient
-            end
-            if jumptimer == jumpmax then
-                jumptimer = 0;
-                -- currentNodeTicks = 0 -- Removed this line
-            end
         end
 
         -- Repath if stuck
