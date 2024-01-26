@@ -17,7 +17,7 @@ Log.Level = 0
 --[[ Variables ]]
 
 local options = {
-    memoryUsage = false, -- Shows memory usage in the top left corner
+    memoryUsage = true, -- Shows memory usage in the top left corner
     drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
     drawCurrentNode = false, -- Draws the current node
@@ -240,7 +240,7 @@ local function OnCreateMove(userCmd)
             -- map check
             if engine.GetMapName():lower():find("cp_") then
                 -- cp
-                objectives = entities.FindByClass("CObjectControlPoint")
+                objectives = entities.FindByClass("CTFObjectiveResource")
             elseif engine.GetMapName():lower():find("pl_") then
                 -- pl
                 objectives = entities.FindByClass("CObjectCartDispenser")
@@ -279,18 +279,22 @@ local function OnCreateMove(userCmd)
                         Log:Info("Found objective at node %d", goalNode.id)
                     end
                 end
+            else
+                Log:Warn("No objectives found; iterate failure.")
             end
 
             -- Check if the distance between player and payload is greater than a threshold
-            if entity then
-                local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
-                local thresholdDistance = 80
+            if engine.GetMapName():lower():find("pl_") then
+                if entity then
+                    local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
+                    local thresholdDistance = 80
 
-                if distanceToPayload > thresholdDistance then
-                    Log:Info("Payload too far from player, pathing closer.")
-                    -- If too far, update the path to get closer
-                    Navigation.FindPath(startNode, goalNode)
-                    currentNodeIndex = #Navigation.GetCurrentPath()
+                    if distanceToPayload > thresholdDistance then
+                        Log:Info("Payload too far from player, pathing closer.")
+                        -- If too far, update the path to get closer
+                        Navigation.FindPath(startNode, goalNode)
+                        currentNodeIndex = #Navigation.GetCurrentPath()
+                    end
                 end
             end
 
