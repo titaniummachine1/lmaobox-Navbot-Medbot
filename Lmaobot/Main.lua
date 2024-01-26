@@ -40,6 +40,7 @@ local Tasks = table.readOnly {
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local jumptimer = 0;
+local jumpmax = 25
 
 --[[ Functions ]]
 
@@ -169,7 +170,6 @@ local function OnCreateMove(userCmd)
 
     if currentPath then
         -- Move along path
-
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
 
@@ -184,40 +184,67 @@ local function OnCreateMove(userCmd)
             end
         else
             currentNodeTicks = currentNodeTicks + 1
+
+            -- Check if the next node is closer
+            if currentNodeIndex > 1 then
+                local nextNode = currentPath[currentNodeIndex - 1]
+                local nextNodePos = Vector3(nextNode.x, nextNode.y, nextNode.z)
+                local nextDist = (myPos - nextNodePos):Length()
+
+                if nextDist < dist then
+                    Log:Info("Skipping to closer node %d", currentNodeIndex - 1)
+                    currentNodeIndex = currentNodeIndex - 1
+                    currentNode = nextNode
+                    currentNodePos = nextNodePos
+                    dist = nextDist
+                end
+            end
+
             Lib.TF2.Helpers.WalkTo(userCmd, me, currentNodePos)
         end
 
         -- Jump if stuck
-        if currentNodeTicks > 100 and not me:InCond(TFCond_Zoomed) then
+        if currentNodeTicks > 17 and not me:InCond(TFCond_Zoomed) and me:EstimateAbsVelocity():Length() < 50 then
             --hold down jump for half a second or something i dont know how long it is
             jumptimer = jumptimer + 1;
             userCmd.buttons = userCmd.buttons | IN_JUMP
+            if gui.GetValue("Duck Jump") == 0 then
+                userCmd.buttons = userCmd.buttons | IN_DUCK --jump duck ineffective but code efficient
+            end
+            if jumptimer == jumpmax then
+                jumptimer = 0;
+                -- currentNodeTicks = 0 -- Removed this line
+            end
         end
 
         -- Repath if stuck
-        if currentNodeTicks > 250 then
-            Log:Warn("Stuck on node %d, removing connection and repathing...", currentNodeIndex)
-            Navigation.RemoveConnection(currentNode, currentPath[currentNodeIndex - 1])
-            Navigation.ClearPath()
-            currentNodeTicks = 0
+        if currentNodeTicks > 300 then
+            local viewPos = me:GetAbsOrigin() + Vector3(0, 0, 72)
+            local trace = engine.TraceLine(viewPos, currentNodePos, MASK_SHOT_HULL)
+            if trace.fraction < 1.0 then
+                Log:Warn("Path to node %d is blocked, removing connection and repathing...", currentNodeIndex)
+                Navigation.RemoveConnection(currentNode, currentPath[currentNodeIndex - 1])
+                Navigation.ClearPath()
+                currentNodeTicks = 0
+            end
         end
     else
         -- Generate new path
-		local startNode = Navigation.GetClosestNode(myPos)
-		local goalNode = nil
-		local entity = nil
-		
-		if currentTask == Tasks.Objective then
-		    local objectives = nil
-		
-		    -- map check
-		    if engine.GetMapName():lower():find("cp_") then
-		        -- cp
-		        objectives = entities.FindByClass("CObjectControlPoint")
-		    elseif engine.GetMapName():lower():find("pl_") then
-		        -- pl
-		        objectives = entities.FindByClass("CObjectCartDispenser")
-		    elseif engine.GetMapName():lower():find("ctf_") then
+        local startNode = Navigation.GetClosestNode(myPos)
+        local goalNode = nil
+        local entity = nil
+
+        if currentTask == Tasks.Objective then
+            local objectives = nil
+
+            -- map check
+            if engine.GetMapName():lower():find("cp_") then
+                -- cp
+                objectives = entities.FindByClass("CObjectControlPoint")
+            elseif engine.GetMapName():lower():find("pl_") then
+                -- pl
+                objectives = entities.FindByClass("CObjectCartDispenser")
+            elseif engine.GetMapName():lower():find("ctf_") then
                 -- ctf
                 local myItem = me:GetPropInt("m_hItem")
                 local flags = entities.FindByClass("CCaptureFlag")
@@ -229,65 +256,80 @@ local function OnCreateMove(userCmd)
                         break
                     end
                 end
-		    else
-		        Log:Warn("Unsupported Gamemode, try CTF or PL")
-		        return
-		    end
+            else
+                Log:Warn("Unsupported Gamemode, try CTF or PL")
+                return
+            end
+
+            -- Ensure objectives is a table before iterating
+            if objectives and type(objectives) ~= "table" then
+                Log:Info("No objectives available")
+                return
+            end
 
             -- Iterate through objectives and find the closest one
-		    local closestDist = math.huge
-		    for idx, ent in pairs(objectives) do
-		        local dist = (myPos - ent:GetAbsOrigin()):Length()
-		        if dist < closestDist then
-		            closestDist = dist
-		            goalNode = Navigation.GetClosestNode(ent:GetAbsOrigin())
-		            entity = ent
-		            Log:Info("Found objective at node %d", goalNode.id)
-		        end
-		    end
+            if objectives then
+                local closestDist = math.huge
+                for idx, ent in pairs(objectives) do
+                    local dist = (myPos - ent:GetAbsOrigin()):Length()
+                    if dist < closestDist then
+                        closestDist = dist
+                        goalNode = Navigation.GetClosestNode(ent:GetAbsOrigin())
+                        entity = ent
+                        Log:Info("Found objective at node %d", goalNode.id)
+                    end
+                end
+            end
 
-		    -- Check if the distance between player and payload is greater than a threshold
-		    if entity then
-		        local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
-		        local thresholdDistance = 300
-		
-		        if distanceToPayload > thresholdDistance then
-		            -- If too far, update the path to get closer
-		            Navigation.FindPath(startNode, goalNode)
-		            currentNodeIndex = #Navigation.GetCurrentPath()
-		        end
-		    end
-		
-		    if not goalNode then
-		        Log:Warn("No objectives found. Continuing with default objective task.")
-		        currentTask = Tasks.Objective
-		        Navigation.ClearPath()
-		    end
-		elseif currentTask == Tasks.Health then
-		    local closestDist = math.huge
-		    for idx, pos in pairs(healthPacks) do
-		        local dist = (myPos - pos):Length()
-		        if dist < closestDist then
-		            closestDist = dist
-		            goalNode = Navigation.GetClosestNode(pos)
-		            Log:Info("Found health pack at node %d", goalNode.id)
-		        end
-		    end
-		else
-		    Log:Debug("Unknown task: %d", currentTask)
-		    return
-		end
-		
-		-- Check if we found a start and goal node
-		if not startNode or not goalNode then
-		    Log:Warn("Could not find new start or goal node")
-		    return
-		end
-		
-		-- Update the pathfinder
-		Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
-		Navigation.FindPath(startNode, goalNode)
-		currentNodeIndex = #Navigation.GetCurrentPath()
+            -- Check if the distance between player and payload is greater than a threshold
+            if entity then
+                local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
+                local thresholdDistance = 80
+
+                if distanceToPayload > thresholdDistance then
+                    Log:Info("Payload too far from player, pathing closer.")
+                    -- If too far, update the path to get closer
+                    Navigation.FindPath(startNode, goalNode)
+                    currentNodeIndex = #Navigation.GetCurrentPath()
+                end
+            end
+
+            if not goalNode then
+                Log:Warn("No objectives found. Continuing with default objective task.")
+                currentTask = Tasks.Objective
+                Navigation.ClearPath()
+            end
+        elseif currentTask == Tasks.Health then
+            local closestDist = math.huge
+            for idx, pos in pairs(healthPacks) do
+                local dist = (myPos - pos):Length()
+                if dist < closestDist then
+                    closestDist = dist
+                    goalNode = Navigation.GetClosestNode(pos)
+                    Log:Info("Found health pack at node %d", goalNode.id)
+                end
+            end
+        else
+            Log:Debug("Unknown task: %d", currentTask)
+            return
+        end
+
+        -- Check if we found a start and goal node
+        if not startNode or not goalNode then
+            Log:Warn("Could not find new start or goal node")
+            return
+        end
+
+        -- Update the pathfinder
+        Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
+        Navigation.FindPath(startNode, goalNode)
+
+        local currentPath = Navigation.GetCurrentPath()
+        if currentPath then
+            currentNodeIndex = #currentPath
+        else
+            Log:Warn("Failed to find a path from node %d to node %d", startNode.id, goalNode.id)
+        end
     end
 end
 
