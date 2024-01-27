@@ -82,6 +82,8 @@ function Navigation.LoadFile(navFile)
         navNodes[area.id] = { x = cX, y = cY, z = cZ, id = area.id, c = area.connections }
     end
 
+    navNodes[0] = { x = 0, y = 0, z = 0, id = 0, c = {} }
+
     Navigation.SetNodes(navNodes)
 end
 
