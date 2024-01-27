@@ -26,6 +26,7 @@ local options = {
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
     lookatpath = false, -- Look at where we are walking
+    smoothLookAtPath = true -- Set this to true to enable smooth look at path
 }
 
 local currentNodeIndex = 1
@@ -180,33 +181,20 @@ local function OnDraw()
     if options.drawPath and currentPath then
         draw.Color(255, 255, 0, 255)
 
-        local lastLeftBaseScreen, lastRightBaseScreen = nil, nil
-
-        for i = #currentPath, 2, -1 do
+        for i = 1, #currentPath - 1 do
             local node1 = currentPath[i]
-            local node2 = currentPath[i - 1]
+            local node2 = currentPath[i + 1]
 
             local node1Pos = Vector3(node1.x, node1.y, node1.z)
             local node2Pos = Vector3(node2.x, node2.y, node2.z)
 
-            if node1Pos and node2Pos then
-                local leftBase, rightBase = arrowPathArrow2(node1Pos, node2Pos, 30)
+            local screenPos1 = client.WorldToScreen(node1Pos)
+            local screenPos2 = client.WorldToScreen(node2Pos)
+            if not screenPos1 or not screenPos2 then goto continue end
 
-                if leftBase and rightBase then
-                    local screenLeftBase = client.WorldToScreen(leftBase)
-                    local screenRightBase = client.WorldToScreen(rightBase)
+            draw.Line(screenPos1[1], screenPos1[2], screenPos2[1], screenPos2[2])
 
-                    if screenLeftBase and screenRightBase then
-                        if lastLeftBaseScreen and lastRightBaseScreen then
-                            draw.Line(lastLeftBaseScreen[1], lastLeftBaseScreen[2], screenLeftBase[1], screenLeftBase[2])
-                            draw.Line(lastRightBaseScreen[1], lastRightBaseScreen[2], screenRightBase[1], screenRightBase[2])
-                        end
-
-                        lastLeftBaseScreen = screenLeftBase
-                        lastRightBaseScreen = screenRightBase
-                    end
-                end
-            end
+            ::continue::
         end
     end
 
@@ -270,13 +258,23 @@ local function OnCreateMove(userCmd)
             if currentNodePos == nil then
                 return
             else
-            local melnx = WPlayer.GetLocal()    
-            local angles = Lib.Utils.Math.PositionAngles(melnx:GetEyePos(), currentNodePos)--Math.PositionAngles(me:GetAbsOrigin() + me:GetPropVector("localdata", "m_vecViewOffset[0]"), currentNodePos)
-            angles.x = 0
-            --Credits to catt (pp021)
-            engine.SetViewAngles(angles)
+                local melnx = WPlayer.GetLocal()
+                local angles = Lib.Utils.Math.PositionAngles(melnx:GetEyePos(), currentNodePos)
+                angles.x = 0
+    
+                if options.smoothLookAtPath then
+                    local currentAngles = userCmd.viewangles
+                    local deltaAngles = {x = angles.x - currentAngles.x, y = angles.y - currentAngles.y}
+    
+                    while deltaAngles.y > 180 do deltaAngles.y = deltaAngles.y - 360 end
+                    while deltaAngles.y < -180 do deltaAngles.y = deltaAngles.y + 360 end
+
+                    angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.5, currentAngles.y + deltaAngles.y * smoothFactor, 0)
+                end
+    
+                engine.SetViewAngles(angles)
             end
-        end   
+        end
 
         local dist = (myPos - currentNodePos):Length()
         if dist < 22 then
@@ -483,14 +481,14 @@ local switchmax = 1;
 
 local function newmap_eventNav(event)
     if event:GetName() == "game_newmap" then
-        client.Command("pf_reload", true)  
+        LoadNavFile()
     end
 end
 
 local function Restart(event)
     if event:GetName() == "teamplay_round_start" then
         switch = switch + 1;
-        client.Command("pf_reload", true)  
+        LoadNavFile()
             if switch == switchmax then 
                 switch = 0;
             end    
