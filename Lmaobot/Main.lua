@@ -20,10 +20,10 @@ Log.Level = 0
 
 local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
-    drawNodes = true, -- Draws all nodes on the map
+    drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
-    drawCurrentNode = true, -- Draws the current node
-    lookatpath = false, -- Look at where we are walking
+    drawCurrentNode = false, -- Draws the current node
+    lookatpath = true, -- Look at where we are walking
     smoothLookAtPath = true, -- Set this to true to enable smooth look at path
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
