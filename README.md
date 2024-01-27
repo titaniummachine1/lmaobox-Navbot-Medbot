@@ -17,13 +17,12 @@ npm install luabundle
 
 Once it has installed, run Bundle.bat and after it finishes run BundleAndDeploy.bat
 
+When those batch scripts have finished, run MakeNavs.bat to get nav meshes for all causal maps
+
 Start TF2, inject LMAOBox (not beta build), and go into a map.
 
 Go to the Lua tab in the menu and load "Lmaobot.lua"
 
 Enjoy NavBot on LMAOBox!
-
-### Navigation Meshes
-You need nav meshes for your navbot to move, download the [navigation meshes](https://github.com/RosneBurgerworks/rosnebot-database/tree/master/nav%20meshes) and put them in ``tf/maps`` folder located in your TF2 installation.
 
 # NOTE: SOME LUAS BREAK THE NAVBOT
