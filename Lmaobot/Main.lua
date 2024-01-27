@@ -443,18 +443,21 @@ local function OnCreateMove(userCmd)
             end
 
             -- Ensure objectives is a table before iterating
-            if objectives and type(objectives) == "table" and #objectives > 0 then
+            if objectives and type(objectives) ~= "table" then
+                Log:Info("No objectives available")
+                return
+            end
+
+            -- Iterate through objectives and find the closest one
+            if objectives then
                 local closestDist = math.huge
                 for idx, ent in pairs(objectives) do
-                    local objectiveNode = Navigation.GetClosestNode(ent:GetAbsOrigin())
-                    if objectiveNode then
-                        local dist = (myPos - ent:GetAbsOrigin()):Length()
-                        if dist < closestDist then
-                            closestDist = dist
-                            goalNode = objectiveNode
-                            entity = ent
-                            Log:Info("Found objective at node %d", goalNode.id)
-                        end
+                    local dist = (myPos - ent:GetAbsOrigin()):Length()
+                    if dist < closestDist then
+                        closestDist = dist
+                        goalNode = Navigation.GetClosestNode(ent:GetAbsOrigin())
+                        entity = ent
+                        Log:Info("Found objective at node %d", goalNode.id)
                     end
                 end
             else
