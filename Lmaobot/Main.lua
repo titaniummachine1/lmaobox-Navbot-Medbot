@@ -6,6 +6,8 @@
 local Common = require("Lmaobot.Common")
 local Navigation = require("Lmaobot.Navigation")
 local Lib = Common.Lib
+---@type boolean, lnxLib
+local libLoaded, lnxLib = pcall(require, "lnxLib")
 
 -- Unload package for debugging
 Lib.Utils.UnloadPackages("Lmaobot")
@@ -18,11 +20,12 @@ Log.Level = 0
 
 local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
-    drawNodes = true, -- Draws all nodes on the map
+    drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
-    drawCurrentNode = true, -- Draws the current node
+    drawCurrentNode = false, -- Draws the current node
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
+    lookatpath = false, -- Look at where we are walking
 }
 
 local currentNodeIndex = 1
@@ -40,6 +43,8 @@ local Tasks = table.readOnly {
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local jumptimer = 0;
+local Math = lnxLib.Utils.Math
+local WPlayer = lnxLib.TF2.WPlayer
 
 --[[ Functions ]]
 
@@ -234,7 +239,7 @@ local function OnCreateMove(userCmd)
     if taskTimer:Run(0.7) then
         -- make sure we're not being healed by a medic before running health logic
         if me:GetHealth() < 75 and not me:InCond(TFCond_Healing) then
-            if currentTask ~= Tasks.Health and shouldfindhealth then
+            if currentTask ~= Tasks.Health and options.shouldfindhealth then
                 Log:Info("Switching to health task")
                 Navigation.ClearPath()
             end
@@ -260,6 +265,18 @@ local function OnCreateMove(userCmd)
 
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
+
+        if options.lookatpath then
+            if currentNodePos == nil then
+                return
+            else
+            local melnx = WPlayer.GetLocal()    
+            local angles = Lib.Utils.Math.PositionAngles(melnx:GetEyePos(), currentNodePos)--Math.PositionAngles(me:GetAbsOrigin() + me:GetPropVector("localdata", "m_vecViewOffset[0]"), currentNodePos)
+            angles.x = 0
+            --Credits to catt (pp021)
+            engine.SetViewAngles(angles)
+            end
+        end   
 
         local dist = (myPos - currentNodePos):Length()
         if dist < 22 then
