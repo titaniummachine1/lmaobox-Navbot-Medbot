@@ -10,7 +10,7 @@ First, go to https://nodejs.org/ and download and install the stable version of 
 
 Next, go to releases and download the source code (zip) and unzip it to any place you want.
 
-After that, you open the Node.JS command prompt and execute
+After that, you open the **Node.JS command prompt** and execute
 ```
 npm install luabundle
 ```
