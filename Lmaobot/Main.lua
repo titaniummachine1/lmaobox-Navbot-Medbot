@@ -25,7 +25,7 @@ local options = {
     drawCurrentNode = false, -- Draws the current node
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
-    lookatpath = false, -- Look at where we are walking
+    lookatpath = true, -- Look at where we are walking
     smoothLookAtPath = true -- Set this to true to enable smooth look at path
 }
 
@@ -180,7 +180,7 @@ local function OnDraw()
 
     -- Draw current path
     if options.drawPath and currentPath then
-        draw.Color(255, 255, 0, 255)
+        draw.Color(255, 255, 255, 255)
 
         for i = 1, #currentPath - 1 do
             local node1 = currentPath[i]
@@ -201,7 +201,7 @@ local function OnDraw()
 
     -- Draw current node
     if options.drawCurrentNode and currentPath then
-        draw.Color(255, 0, 0, 255)
+        draw.Color(255, 255, 255, 255)
 
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
