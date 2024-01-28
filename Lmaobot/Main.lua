@@ -254,6 +254,13 @@ local function OnCreateMove(userCmd)
     if currentPath then
         -- Move along path
 
+        -- auto melee fix
+        if userCmd:GetForwardMove() ~= 0 or userCmd:GetSideMove() ~= 0 then
+            Navigation.ClearPath()
+            currentNodeTicks = 0
+            return
+        end
+
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
 
