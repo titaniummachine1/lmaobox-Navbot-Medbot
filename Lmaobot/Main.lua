@@ -489,31 +489,6 @@ Commands.Register("pf_reload", function()
     LoadNavFile()
 end)
 
--- credits: snipergaming888 (Sydney)
-
-local switch = 0;
-local switchmax = 1;
-
-
-local function newmap_eventNav(event)
-    if event:GetName() == "game_newmap" then
-        LoadNavFile()
-    end
-end
-
-local function Restart(event)
-    if event:GetName() == "teamplay_round_start" then
-        switch = switch + 1;
-        LoadNavFile()
-            if switch == switchmax then 
-                switch = 0;
-            end    
-    end
-end  
-
-callbacks.Register("FireGameEvent", "newm_event", newmap_eventNav)
-callbacks.Register("FireGameEvent", "teamplay_restart_round", Restart)
-
 -- Calculates the path from start to goal
 Commands.Register("pf", function(args)
     if args:size() ~= 2 then
