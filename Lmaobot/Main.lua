@@ -103,30 +103,28 @@ local function NormalizeVector(v)
     return Vector3(v.x / length, v.y / length, v.z / length)
 end
 
-local function arrowPathArrow2(startPos, endPos, width)
-    if not (startPos and endPos) then return nil, nil end
-
-    local direction = endPos - startPos
-    local length = direction:Length()
-    if length == 0 then return nil, nil end
-    direction = NormalizeVector(direction)
-
-    local perpDir = Vector3(-direction.y, direction.x, 0)
-    local leftBase = startPos + perpDir * width
-    local rightBase = startPos - perpDir * width
-
-    local screenStartPos = client.WorldToScreen(startPos)
-    local screenEndPos = client.WorldToScreen(endPos)
-    local screenLeftBase = client.WorldToScreen(leftBase)
-    local screenRightBase = client.WorldToScreen(rightBase)
-
-    if screenStartPos and screenEndPos and screenLeftBase and screenRightBase then
-        draw.Line(screenStartPos[1], screenStartPos[2], screenEndPos[1], screenEndPos[2])
-        draw.Line(screenLeftBase[1], screenLeftBase[2], screenEndPos[1], screenEndPos[2])
-        draw.Line(screenRightBase[1], screenRightBase[2], screenEndPos[1], screenEndPos[2])
+local function L_line(start_pos, end_pos, secondary_line_size)
+    if not (start_pos and end_pos) then
+        return
     end
-
-    return leftBase, rightBase
+    local direction = end_pos - start_pos
+    local direction_length = direction:Length()
+    if direction_length == 0 then
+        return
+    end
+    local normalized_direction = Normalize(direction)
+    local perpendicular = Vector3(normalized_direction.y, -normalized_direction.x, 0) * secondary_line_size
+    local w2s_start_pos = client.WorldToScreen(start_pos)
+    local w2s_end_pos = client.WorldToScreen(end_pos)
+    if not (w2s_start_pos and w2s_end_pos) then
+        return
+    end
+    local secondary_line_end_pos = start_pos + perpendicular
+    local w2s_secondary_line_end_pos = client.WorldToScreen(secondary_line_end_pos)
+    if w2s_secondary_line_end_pos then
+        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_end_pos[1], w2s_end_pos[2])
+        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_secondary_line_end_pos[1], w2s_secondary_line_end_pos[2])
+    end
 end
 
 --[[ Callbacks ]]
@@ -311,7 +309,7 @@ local function OnCreateMove(userCmd)
             --Credits to catt (pp021)
             engine.SetViewAngles(angles)
             end
-        end   
+        end
 
         local dist = (myPos - currentNodePos):Length()
         if dist < 22 then
