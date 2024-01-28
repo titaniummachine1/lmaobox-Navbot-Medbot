@@ -59,6 +59,7 @@ local function LoadNavFile()
     Navigation.LoadFile(navFile)
 end
 
+
 local function Draw3DBox(size, pos)
     local halfSize = size / 2
     if not corners then
@@ -103,28 +104,30 @@ local function NormalizeVector(v)
     return Vector3(v.x / length, v.y / length, v.z / length)
 end
 
-local function L_line(start_pos, end_pos, secondary_line_size)
-    if not (start_pos and end_pos) then
-        return
+local function arrowPathArrow2(startPos, endPos, width)
+    if not (startPos and endPos) then return nil, nil end
+
+    local direction = endPos - startPos
+    local length = direction:Length()
+    if length == 0 then return nil, nil end
+    direction = NormalizeVector(direction)
+
+    local perpDir = Vector3(-direction.y, direction.x, 0)
+    local leftBase = startPos + perpDir * width
+    local rightBase = startPos - perpDir * width
+
+    local screenStartPos = client.WorldToScreen(startPos)
+    local screenEndPos = client.WorldToScreen(endPos)
+    local screenLeftBase = client.WorldToScreen(leftBase)
+    local screenRightBase = client.WorldToScreen(rightBase)
+
+    if screenStartPos and screenEndPos and screenLeftBase and screenRightBase then
+        draw.Line(screenStartPos[1], screenStartPos[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenLeftBase[1], screenLeftBase[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenRightBase[1], screenRightBase[2], screenEndPos[1], screenEndPos[2])
     end
-    local direction = end_pos - start_pos
-    local direction_length = direction:Length()
-    if direction_length == 0 then
-        return
-    end
-    local normalized_direction = Normalize(direction)
-    local perpendicular = Vector3(normalized_direction.y, -normalized_direction.x, 0) * secondary_line_size
-    local w2s_start_pos = client.WorldToScreen(start_pos)
-    local w2s_end_pos = client.WorldToScreen(end_pos)
-    if not (w2s_start_pos and w2s_end_pos) then
-        return
-    end
-    local secondary_line_end_pos = start_pos + perpendicular
-    local w2s_secondary_line_end_pos = client.WorldToScreen(secondary_line_end_pos)
-    if w2s_secondary_line_end_pos then
-        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_end_pos[1], w2s_end_pos[2])
-        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_secondary_line_end_pos[1], w2s_secondary_line_end_pos[2])
-    end
+
+    return leftBase, rightBase
 end
 
 --[[ Callbacks ]]
@@ -153,63 +156,34 @@ local function OnDraw()
         currentY = currentY + 20
     end
 
-    --Draw all nodes and sub-nodes with connections
-    local navNodes = Navigation.GetNodes()
+    -- Draw all nodes
     if options.drawNodes then
-        draw.Color(0, 255, 0, 255)  -- Color for main nodes
-        -- Iterate through each main node
+        draw.Color(0, 255, 0, 255)
+
+        local navNodes = Navigation.GetNodes()
         for id, node in pairs(navNodes) do
             local nodePos = Vector3(node.x, node.y, node.z)
             local dist = (myPos - nodePos):Length()
-            if dist > 700 then goto continue_main_node end
+            if dist > 700 then goto continue end
 
             local screenPos = client.WorldToScreen(nodePos)
-            if not screenPos then goto continue_main_node end
+            if not screenPos then goto continue end
 
             local x, y = screenPos[1], screenPos[2]
-            draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square for main node
+            draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square centered at (x, y)
 
-            -- Draw sub-nodes for this main node
-            if node.subnodes then
-                draw.Color(255, 0, 0, 255)  -- Color for sub-nodes
-                for _, subnode in ipairs(node.subnodes) do
-                    local subNodePos = Vector3(subnode.x, subnode.y, subnode.z)
-                    local subScreenPos = client.WorldToScreen(subNodePos)
-                    if not subScreenPos then goto continue_sub_node end
-
-                    draw.FilledRect(subScreenPos[1] - 1, subScreenPos[2] - 1, subScreenPos[1] + 1, subScreenPos[2] + 1)  -- Draw a smaller square for sub-node
-
-                    -- Draw connections between sub-nodes
-                    if subnode.neighbors then
-                        draw.Color(0, 0, 255, 255)  -- Color for connections
-                        for _, neighbor in ipairs(subnode.neighbors) do
-                            local neighborPos = Vector3(neighbor.point.x, neighbor.point.y, neighbor.point.z)
-                            local neighborScreenPos = client.WorldToScreen(neighborPos)
-                            if neighborScreenPos then
-                                draw.Line(subScreenPos[1], subScreenPos[2], neighborScreenPos[1], neighborScreenPos[2])  -- Draw line for connection
-                            end
-                        end
-                    end
-
-                    ::continue_sub_node::
-                end
-                draw.Color(0, 255, 0, 255)  -- Reset color to main nodes color
-            end
-
-            -- Node IDs for main nodes
+            -- Node IDs
             draw.Text(screenPos[1], screenPos[2] + 10, tostring(id))
 
-            ::continue_main_node::
+            ::continue::
         end
     end
-
 
     -- Draw current path
     if options.drawPath and currentPath then
         draw.Color(255, 255, 255, 255)
 
-        -- Iterate over all nodes in the path, excluding the last two nodes
-        for i = 1, #currentPath - 2 do
+        for i = 1, #currentPath - 1 do
             local node1 = currentPath[i]
             local node2 = currentPath[i + 1]
 
@@ -220,28 +194,22 @@ local function OnDraw()
             local screenPos2 = client.WorldToScreen(node2Pos)
             if not screenPos1 or not screenPos2 then goto continue end
 
-            if node1Pos and node2Pos then
-                L_line(node1Pos, node2Pos, 22)  -- Adjust the size for the perpendicular segment as needed
-            end
+            draw.Line(screenPos1[1], screenPos1[2], screenPos2[1], screenPos2[2])
+
             ::continue::
         end
-
-        -- Draw a line from the player to the second node from the end
-        local secondLastNode = currentPath[#currentPath - 1]
-        local secondLastNodePos = Vector3(secondLastNode.x, secondLastNode.y, secondLastNode.z)
-        L_line(myPos, secondLastNodePos, 22)
     end
 
     -- Draw current node
     if options.drawCurrentNode and currentPath then
-        draw.Color(255, 0, 0, 255)
+        draw.Color(255, 255, 255, 255)
 
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
 
         local screenPos = client.WorldToScreen(currentNodePos)
         if screenPos then
-            Draw3DBox(22, currentNodePos)
+            Draw3DBox(20, currentNodePos)
             draw.Text(screenPos[1], screenPos[2], tostring(currentNodeIndex))
         end
     end
@@ -261,7 +229,7 @@ local function OnCreateMove(userCmd)
     -- Update the current task
     if taskTimer:Run(0.7) then
         -- make sure we're not being healed by a medic before running health logic
-        if me:GetHealth() < 75 and not me:InCond(TFCond_Healing) then
+        if (me:GetHealth() / me:GetMaxHealth()) * 100 < options.SelfHealTreshold and not me:InCond(TFCond_Healing) then
             if currentTask ~= Tasks.Health and options.shouldfindhealth then
                 Log:Info("Switching to health task")
                 Navigation.ClearPath()
