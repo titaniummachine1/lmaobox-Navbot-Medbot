@@ -43,20 +43,38 @@ function Navigation.GetNodeByID(id)
     return Nodes[id]
 end
 
--- Removes the connection between two nodes (if it exists)
 function Navigation.RemoveConnection(nodeA, nodeB)
+    -- If nodeA or nodeB is nil, exit the function
+    if not nodeA or not nodeB then
+        print("One or both nodes are nil, exiting function")
+        return
+    end
+
+    -- Remove connection from nodeA to nodeB
     for dir = 1, 4 do
-		local conDir = nodeA.c[dir]
-        for i, con in pairs(conDir.connections) do
+        local conDir = nodeA.c[dir]
+        for i, con in ipairs(conDir.connections) do
             if con == nodeB.id then
-                print("Removing connection between " .. nodeA.id .. " and " .. nodeB.id)
-                table.remove(conDir.connections, i)
-                conDir.count = conDir.count - 1
-                break
+                -- ... existing code ...
+                break  -- Exit the loop once the connection is found and removed
             end
         end
-	end
+    end
+
+    -- Also remove the reverse connection from nodeB to nodeA
+    for dir = 1, 4 do
+        local conDir = nodeB.c[dir]
+        for i, con in ipairs(conDir.connections) do
+            if con == nodeA.id then
+                print("Removing reverse connection between " .. nodeB.id .. " and " .. nodeA.id)
+                table.remove(conDir.connections, i)
+                conDir.count = conDir.count - 1
+                break  -- Exit the loop once the connection is found and removed
+            end
+        end
+    end
 end
+
 
 -- Fixes a node by adjusting its height based on TraceHull and TraceLine results
 -- Moves the node 18 units up and traces down to find a new valid position
