@@ -1,6 +1,7 @@
 --[[
 	A-Star Algorithm for Lmaobox
 	Credits: github.com/GlorifiedPig/Luafinding
+	fixed by: titaniummachine1 (https://github.com/titaniummachine1)
 ]]
 
 local Heap = require("Lmaobot.Heap")
