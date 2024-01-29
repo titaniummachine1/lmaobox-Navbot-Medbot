@@ -50,18 +50,7 @@ function Navigation.RemoveConnection(nodeA, nodeB)
         return
     end
 
-    -- Remove connection from nodeA to nodeB
-    for dir = 1, 4 do
-        local conDir = nodeA.c[dir]
-        for i, con in ipairs(conDir.connections) do
-            if con == nodeB.id then
-                -- ... existing code ...
-                break  -- Exit the loop once the connection is found and removed
-            end
-        end
-    end
-
-    -- Also remove the reverse connection from nodeB to nodeA
+    --remove the reverse connection from nodeB to nodeA
     for dir = 1, 4 do
         local conDir = nodeB.c[dir]
         for i, con in ipairs(conDir.connections) do
@@ -75,18 +64,31 @@ function Navigation.RemoveConnection(nodeA, nodeB)
     end
 end
 
-
 -- Fixes a node by adjusting its height based on TraceHull and TraceLine results
 -- Moves the node 18 units up and traces down to find a new valid position
 ---@param node NavNode
 function Navigation.FixNode(node)
     local upVector = Vector3(0, 0, 18) -- Move node 18 units up
-    local downVector = Vector3(0, 0, -10000) -- Trace down a large distance
+    local downVector = Vector3(0, 0, -18) -- Trace down a large distance
     local traceMin = Vector3(-24, -24, 0)
     local traceMax = Vector3(24, 24, 82)
 
+    -- Perform a TraceHull directly downwards from the node's center position
+    local nodePos = node.pos
+    if nodePos == nil then
+        print("Node position is nil, exiting function")
+        return
+    end
+
     -- Function to perform a vertical trace and update a position
     local function traceAndUpdatePos(position)
+        if nodePos == nil then
+            print("Node position is nil, exiting function")
+            return
+        end
+
+        local upVector = Vector3(0, 0, 18) -- Move node 18 units up
+        local downVector = Vector3(0, 0, -10000) -- Trace down a large distance
         local traceResult = engine.TraceLine(position + upVector, position + downVector, MASK_SHOT_HULL)
         if traceResult.fraction < 1 then
             return traceResult.endpos
@@ -96,7 +98,6 @@ function Navigation.FixNode(node)
     end
 
     -- Perform a TraceHull directly downwards from the node's center position
-    local nodePos = node.pos
     local centerTraceResult = engine.TraceHull(nodePos + upVector, nodePos + downVector, traceMin, traceMax, MASK_SHOT_HULL)
 
     if centerTraceResult.fraction < 1 then
@@ -105,21 +106,99 @@ function Navigation.FixNode(node)
         node.pos = centerTraceResult.endpos
 
         -- Update the nw and se corners
-        node.nw = traceAndUpdatePos(node.nw.x, node.nw.y, node.nw.z)
-        node.se = traceAndUpdatePos(node.se.x, node.se.y, node.se.z)
+        node.nw = traceAndUpdatePos(Vector3(node.nw.x, node.nw.y, node.nw.z))
+        node.se = traceAndUpdatePos(Vector3(node.se.x, node.se.y, node.se.z))
     end
 end
 
+-- Constants for hull dimensions and trace masks
+local HULL_MIN = Vector3(-24, -24, 0)
+local HULL_MAX = Vector3(24, 24, 82)
+local TRACE_MASK = MASK_PLAYERSOLID
+
+-- Checks for an obstruction between two points using a hull trace.
+local function isPathClear(startPos, endPos)
+    local traceResult = engine.TraceHull(startPos, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
+    return traceResult.fraction == 1  -- If fraction is 1, path is clear.
+end
+
+-- Checks if the ground is stable at a given position.
+local function isGroundStable(position)
+    local groundTraceStart = position + Vector3(0, 0, 5)  -- Start a bit above the ground
+    local groundTraceEnd = position + Vector3(0, 0, -67)  -- Check 72 units down
+    local groundTraceResult = engine.TraceLine(groundTraceStart, groundTraceEnd, TRACE_MASK)
+    return groundTraceResult.fraction < 1  -- If fraction is less than 1, ground is stable.
+end
+
+-- Recursive binary search function to check path walkability.
+local function binarySearch(startPos, endPos, depth)
+    if depth == 0 then
+        return true
+    end
+
+    if not isPathClear(startPos, endPos) then
+        return false
+    end
+
+    local midPos = (startPos + endPos) / 2
+    if not isGroundStable(midPos) then
+        return false
+    end
+
+    -- Recurse for each half of the path
+    return binarySearch(startPos, midPos, depth - 1) and binarySearch(midPos, endPos, depth - 1)
+end
+
+-- Main function to check if the path between the current position and the node is walkable.
+function Navigation.isWalkable(startPos, endPos)
+    local maxDepth = 5
+    return binarySearch(startPos, endPos, maxDepth)
+end
+
+
+--- Finds the closest walkable node from the player's current position in terms of index order.
+-- @param currentPath table The current path consisting of nodes.
+-- @param myPos Vector3 The player's current position.
+-- @param currentNodeIndex number The index of the current node in the path.
+-- @return number, Node, Vector3 The index, node, and position of the closest walkable node in terms of index order.
+function Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
+    local lastWalkableNodeIndex = currentNodeIndex
+    local lastWalkableNode = currentPath[currentNodeIndex]
+    local lastWalkableNodePos = lastWalkableNode.pos
+
+    -- Start from the node immediately after the current node
+    for i = currentNodeIndex + 1, #currentPath do
+        local node = currentPath[i]
+        Navigation.FixNode(node)
+        local nodePos = node.pos
+
+        -- Check if the node is walkable
+        if Navigation.isWalkable(myPos, nodePos) then
+            -- Update the last walkable node information
+            lastWalkableNodeIndex = i
+            lastWalkableNode = node
+            lastWalkableNodePos = nodePos
+        else
+            -- A non-walkable node is found, return the last walkable node before it
+            break
+        end
+    end
+
+    -- Return the last walkable node information
+    return lastWalkableNodeIndex, lastWalkableNode, lastWalkableNodePos
+end
+
+
 ---@param node NavNode
----@param pos { x:number, y:number, z:number }
----@return { x:number, y:number, z:number }
+---@param pos Vector3
+---@return Vector3
 function Navigation.GetMeshPos(node, pos)
     -- Calculate the closest point on the node's 3D plane to the given position
-    return {
-        x = math.max(node.nw.x, math.min(node.se.x, pos.x)),
-        y = math.max(node.nw.y, math.min(node.se.y, pos.y)),
-        z = math.max(node.nw.z, math.min(node.se.z, pos.z))
-    }
+    return Vector3(
+        math.max(node.nw.x, math.min(node.se.x, pos.x)),
+        math.max(node.nw.y, math.min(node.se.y, pos.y)),
+        math.max(node.nw.z, math.min(node.se.z, pos.z))
+    )
 end
 
 -- Attempts to read and parse the nav file
