@@ -502,10 +502,7 @@ local function OnCreateMove(userCmd)
             local objectives = nil
 
             -- map check
-            if engine.GetMapName():lower():find("koth_") then
-                -- cp
-                objectives = entities.FindByClass("CTFObjectiveResource")
-            elseif engine.GetMapName():lower():find("pl_") then
+            if engine.GetMapName():lower():find("pl_") then
                 -- pl
                 objectives = entities.FindByClass("CObjectCartDispenser")
             elseif engine.GetMapName():lower():find("plr_") then
