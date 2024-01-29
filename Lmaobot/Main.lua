@@ -30,6 +30,7 @@ local options = {
     SelfHealTreshold = 45, -- Health percentage to start looking for healthPacks
 }
 
+local jumptimer = 0;
 local smoothFactor = 0.05
 local currentNodeIndex = 1
 local currentNodeTicks = 0
