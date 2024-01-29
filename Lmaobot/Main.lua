@@ -328,7 +328,6 @@ local function OnCreateMove(userCmd)
         end
     end
 
-    local flags = me:GetPropInt( "m_fFlags" );
     local myPos = me:GetAbsOrigin()
     local currentPath = Navigation.GetCurrentPath()
 
