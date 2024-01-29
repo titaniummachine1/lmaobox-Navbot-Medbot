@@ -30,7 +30,6 @@ local options = {
     SelfHealTreshold = 45, -- Health percentage to start looking for healthPacks
 }
 
-local jumptimer = 0;
 local smoothFactor = 0.05
 local currentNodeIndex = 1
 local currentNodeTicks = 0
@@ -45,6 +44,7 @@ local Tasks = table.readOnly {
     UnStuck = 3,
 }
 
+local jumptimer = 0;
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local Math = lnxLib.Utils.Math
@@ -225,16 +225,10 @@ local function OnDraw()
             local screenPos2 = client.WorldToScreen(node2Pos)
             if not screenPos1 or not screenPos2 then goto continue end
 
-            if node1Pos and node2Pos then
-                L_line(node1Pos, node2Pos, 22)  -- Adjust the size for the perpendicular segment as needed
-            end
+            draw.Line(screenPos1[1], screenPos1[2], screenPos2[1], screenPos2[2])
+
             ::continue::
         end
-
-        -- Draw a line from the player to the second node from the end
-        local secondLastNode = currentPath[#currentPath - 1]
-        local secondLastNodePos = Vector3(secondLastNode.x, secondLastNode.y, secondLastNode.z)
-        L_line(myPos, secondLastNodePos, 22)
     end
 
     -- Draw current node
@@ -516,7 +510,18 @@ local function OnCreateMove(userCmd)
                 objectives = entities.FindByClass("CObjectCartDispenser")
             elseif engine.GetMapName():lower():find("plr_") then
                 -- plr
-                objectives = entities.FindByClass("CObjectCartDispenser")   
+                payloads = entities.FindByClass("CObjectCartDispenser")
+                if #payloads == 1 and payloads[1]:GetTeamNumber() ~= me:GetTeamNumber() then
+                    goalNode = Navigation.GetClosestNode(payloads[1]:GetAbsOrigin())
+                    Log:Info("Found payload1 at node %d", goalNode.id)
+                else
+                    for idx, entity in pairs(payloads) do
+                        if entity:GetTeamNumber() == me:GetTeamNumber() then
+                            goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
+                            Log:Info("Found payload at node %d", goalNode.id)
+                        end
+                    end
+                end
             elseif engine.GetMapName():lower():find("ctf_") then
                 -- ctf
                 local myItem = me:GetPropInt("m_hItem")
@@ -530,7 +535,7 @@ local function OnCreateMove(userCmd)
                     end
                 end
             else
-                Log:Warn("Unsupported Gamemode, try CTF or PL")
+                Log:Warn("Unsupported Gamemode, try CTF, PL, or PLR")
                 
             end
 
