@@ -41,9 +41,8 @@ local Tasks = table.readOnly {
     None = 0,
     Objective = 1,
     Health = 2,
-    UnStuck = 3,
-    Follow = 4,
-    Medic = 5,
+    Follow = 3,
+    Medic = 4,
 }
 
 local currentTask = Tasks.Objective
@@ -131,10 +130,6 @@ end
 
 --[[ Callbacks ]]
 
--- Variables
-local circlePoints = nil
-local currentGoalPointIndex = nil
-
 local function OnDraw()
     draw.SetFont(Fonts.Verdana)
     draw.Color(255, 0, 0, 255)
@@ -159,36 +154,33 @@ local function OnDraw()
         currentY = currentY + 20
     end
 
-    --Draw all nodes and sub-nodes with connections
-    local navNodes = Navigation.GetNodes()
+    -- Draw all nodes
     if options.drawNodes then
-        draw.Color(0, 255, 0, 255)  -- Color for main nodes
-        -- Iterate through each main node
+        draw.Color(0, 255, 0, 255)
+
+        local navNodes = Navigation.GetNodes()
         for id, node in pairs(navNodes) do
             local nodePos = Vector3(node.x, node.y, node.z)
             local dist = (myPos - nodePos):Length()
-            if dist > 700 then goto continue_main_node end
+            if dist > 700 then goto continue end
 
             local screenPos = client.WorldToScreen(nodePos)
-            if not screenPos then goto continue_main_node end
+            if not screenPos then goto continue end
 
-            local x, y = screenPos[1], screenPos[2]
-            draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square for main node
+            draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square centered at (x, y)
 
-            -- Node IDs for main nodes
-            --draw.Text(screenPos[1], screenPos[2] + 10, tostring(id))
+            -- Node IDs
+            draw.Text(screenPos[1], screenPos[2] + 10, tostring(id))
 
-            ::continue_main_node::
+            ::continue::
         end
     end
-
 
     -- Draw current path
     if options.drawPath and currentPath then
         draw.Color(255, 255, 255, 255)
 
-        -- Iterate over all nodes in the path, excluding the last two nodes
-        for i = 1, #currentPath - 2 do
+        for i = 1, #currentPath - 1 do
             local node1 = currentPath[i]
             local node2 = currentPath[i + 1]
 
@@ -206,10 +198,10 @@ local function OnDraw()
         end
 
         -- Draw a line from the player to the second node from the end
-        local secondLastNode = currentPath[#currentPath - 1]
-        if secondLastNode then
-            local secondLastNodePos = Vector3(secondLastNode.x, secondLastNode.y, secondLastNode.z)
-            L_line(myPos, secondLastNodePos, 22)
+        local node1 = currentPath[#currentPath]
+        if node1 then
+            local node1 = Vector3(node1.x, node1.y, node1.z)
+            L_line(myPos, node1, 22)
         end
     end
 
@@ -222,56 +214,12 @@ local function OnDraw()
 
         local screenPos = client.WorldToScreen(currentNodePos)
         if screenPos then
-            Draw3DBox(22, currentNodePos)
+            Draw3DBox(20, currentNodePos)
             draw.Text(screenPos[1], screenPos[2], tostring(currentNodeIndex))
         end
     end
 end
 
--- Constants
-local ROTATION_RADIUS = 1000
-local POINT_THRESHOLD_DISTANCE = 27  -- Distance threshold to remove points
-
--- Function to generate circle points
-local function generateCirclePoints(centerPos, radius, numPoints)
-    local points = {}
-    for i = 1, numPoints do
-        local angle = (i / numPoints) * 2 * math.pi
-        local x = centerPos.x + radius * math.cos(angle)
-        local y = centerPos.y + radius * math.sin(angle)
-        table.insert(points, Vector3(x, y, centerPos.z))
-    end
-    return points
-end
-
-local function isVisible(fromPos, toPos)
-    local trace = engine.TraceLine(fromPos, toPos, MASK_SHOT_HULL)
-    return trace.fraction == 1.0  -- True if the line trace did not hit any obstacles
-end
-
-local function FindClosestTeammate(me)
-    local teammates = entities.FindByClass("CTFPlayer")
-    local closestTeammate = nil
-    local minDist = math.huge
-
-    for i, teammate in pairs(teammates) do
-        if teammate:GetIndex() ~= me:GetIndex() and teammate:GetTeamNumber() == me:GetTeamNumber() and teammate:IsAlive() then
-            local dist = (teammate:GetAbsOrigin() - me:GetAbsOrigin()):Length()
-            if dist < minDist then
-                minDist = dist
-                closestTeammate = teammate
-            end
-        end
-    end
-
-    return closestTeammate
-end
-
-
--- Initialize a variable to keep track of the last skipped index
-local lastSkippedIndex = 0
-local movementChangeTimer = 66
-local previousTask = nil
 
 ---@param userCmd UserCmd
 local function OnCreateMove(userCmd)
@@ -325,7 +273,7 @@ local function OnCreateMove(userCmd)
         end
 
         local currentNode = currentPath[currentNodeIndex]
-        local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
+        local currentNodePos = currentNode.pos
 
         if options.lookatpath then
             if currentNodePos == nil then
@@ -433,8 +381,14 @@ local function OnCreateMove(userCmd)
             if traceResult1.fraction < 0.9 then
                 -- Path to the next node is blocked
                 Log:Warn("Path to node %d is blocked, removing connection and repathing...", currentNodeIndex)
-                -- Remove the connection between the current node and the next node
-                Navigation.RemoveConnection(currentNode, currentPath[currentNodeIndex + 1])
+                -- Check that the current node and the next node exist in the path
+                if currentPath[currentNodeIndex] and currentPath[currentNodeIndex + 1] then
+                    -- Remove the connection between the current node and the next node
+                    Navigation.RemoveConnection(currentPath[currentNodeIndex], currentPath[currentNodeIndex + 1])
+                elseif currentPath[currentNodeIndex] and not currentPath[currentNodeIndex + 1] and currentNodeIndex > 1 then
+                    -- If there's no next node, but there is a previous node, remove connection between the previous and the current node
+                    Navigation.RemoveConnection(currentPath[currentNodeIndex - 1], currentPath[currentNodeIndex])
+                end
                 -- Clear the current path and recalculate
                 Navigation.ClearPath()
                 currentNodeTicks = 0
@@ -451,11 +405,6 @@ local function OnCreateMove(userCmd)
         local startNode = Navigation.GetClosestNode(myPos)
         local goalNode = nil
         local entity = nil
-
-        if not startNode then
-            Log:Warn("Could not find a start node near the player's position.")
-            return
-        end
 
         if currentTask == Tasks.Objective then
             local objectives = nil
@@ -536,70 +485,6 @@ local function OnCreateMove(userCmd)
                     end
                 end
             end
-        elseif currentTask == Tasks.UnStuck then
-          -- Main task logic
-            if not circlePoints then
-                -- Generate circle points only once
-                circlePoints = generateCirclePoints(myPos, ROTATION_RADIUS, 20)  -- Generate 8 points for the circle
-            end
-
-            -- Find the farthest point from the player as the initial goal
-            if not currentGoalPointIndex then
-                local maxDistance = 0
-                for i, point in ipairs(circlePoints) do
-                    local distance = (myPos - point):Length()
-                    if distance > maxDistance then
-                        maxDistance = distance
-                        currentGoalPointIndex = i
-                    end
-                end
-            end
-
-            -- Task logic to walk to the current goal point
-            if currentGoalPointIndex then
-                local goalPoint = circlePoints[currentGoalPointIndex]
-                if (myPos - goalPoint):Length() < POINT_THRESHOLD_DISTANCE then
-                    -- Point reached, remove it
-                    table.remove(circlePoints, currentGoalPointIndex)
-                    currentGoalPointIndex = nil  -- Reset goal point index to find new farthest point in the next iteration
-
-                    if #circlePoints == 0 then
-                        -- All points visited, change task to previous
-                        currentTask = previousTask
-                        Log:Info("All points visited, changing task to previous task.")
-                        Navigation.ClearPath()
-                        currentNodeTicks = 0
-                    end
-                else
-                    -- Walk to the current goal point
-                    Lib.TF2.Helpers.WalkTo(userCmd, me, goalPoint)
-                end
-            end
-        elseif currentTask == Tasks.Follow then
-            local closestTeammate = FindClosestTeammate(me)
-            if closestTeammate then
-                local goalNode = Navigation.GetClosestNode(closestTeammate:GetAbsOrigin())
-                if not goalNode then
-                    Log:Warn("Could not find node near the closest teammate")
-                    return
-                end
-        
-                -- Check if a new path needs to be generated
-                if not currentPath or currentPath[#currentPath].id ~= goalNode.id then
-                    local startNode = Navigation.GetClosestNode(myPos)
-                    if startNode then
-                        Navigation.FindPath(startNode, goalNode)
-                        currentPath = Navigation.GetCurrentPath()
-                        currentNodeIndex = #currentPath
-                    else
-                        Log:Warn("Could not find a start node near the bot's position.")
-                    end
-                end
-            else
-                Log:Warn("No teammates found.")
-            end
-        --elseif currentTask == Tasks.Medic then
-
         else
             Log:Debug("Unknown task: %d", currentTask)
             return
@@ -615,8 +500,8 @@ local function OnCreateMove(userCmd)
         Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
         Navigation.FindPath(startNode, goalNode)
 
-        currentPath = Navigation.GetCurrentPath()
-        if currentPath and #currentPath > 0 then
+        local currentPath = Navigation.GetCurrentPath()
+        if currentPath then
             currentNodeIndex = #currentPath
         else
             Log:Warn("Failed to find a path from node %d to node %d", startNode.id, goalNode.id)
@@ -695,7 +580,7 @@ local function Restart(event)
         Navigation.ClearPath()
         currentNodeTicks = 0
     end
-end  
+end
 
 callbacks.Register("FireGameEvent", "newm_event", newmap_eventNav)
 callbacks.Register("FireGameEvent", "teamplay_restart_round", Restart)
