@@ -64,12 +64,17 @@ function Navigation.RemoveConnection(nodeA, nodeB)
     end
 end
 
+-- Constants for hull dimensions and trace masks
+local HULL_MIN = Vector3(-24, -24, 0)
+local HULL_MAX = Vector3(24, 24, 82)
+local TRACE_MASK = MASK_PLAYERSOLID
+
 -- Fixes a node by adjusting its height based on TraceHull and TraceLine results
 -- Moves the node 18 units up and traces down to find a new valid position
 ---@param node NavNode
 function Navigation.FixNode(node)
-    local upVector = Vector3(0, 0, 18) -- Move node 18 units up
-    local downVector = Vector3(0, 0, -18) -- Trace down a large distance
+    local upVector = Vector3(0, 0, 27) -- Move node 18 units up
+    local downVector = Vector3(0, 0, -72) -- Trace down a large distance
     local traceMin = Vector3(-24, -24, 0)
     local traceMax = Vector3(24, 24, 82)
 
@@ -80,41 +85,15 @@ function Navigation.FixNode(node)
         return
     end
 
-    -- Function to perform a vertical trace and update a position
-    local function traceAndUpdatePos(position)
-        if nodePos == nil then
-            print("Node position is nil, exiting function")
-            return
-        end
-
-        local upVector = Vector3(0, 0, 18) -- Move node 18 units up
-        local downVector = Vector3(0, 0, -10000) -- Trace down a large distance
-        local traceResult = engine.TraceLine(position + upVector, position + downVector, MASK_SHOT_HULL)
-        if traceResult.fraction < 1 then
-            return traceResult.endpos
-        else
-            return position
-        end
-    end
-
     -- Perform a TraceHull directly downwards from the node's center position
-    local centerTraceResult = engine.TraceHull(nodePos + upVector, nodePos + downVector, traceMin, traceMax, MASK_SHOT_HULL)
+    local centerTraceResult = engine.TraceHull(nodePos + upVector, nodePos + downVector, traceMin, traceMax, TRACE_MASK)
 
     if centerTraceResult.fraction < 1 then
         -- Update node's center position
         node.z = centerTraceResult.endpos.z
         node.pos = centerTraceResult.endpos
-
-        -- Update the nw and se corners
-        node.nw = traceAndUpdatePos(Vector3(node.nw.x, node.nw.y, node.nw.z))
-        node.se = traceAndUpdatePos(Vector3(node.se.x, node.se.y, node.se.z))
     end
 end
-
--- Constants for hull dimensions and trace masks
-local HULL_MIN = Vector3(-24, -24, 0)
-local HULL_MAX = Vector3(24, 24, 82)
-local TRACE_MASK = MASK_PLAYERSOLID
 
 -- Checks for an obstruction between two points using a hull trace.
 local function isPathClear(startPos, endPos)
@@ -156,20 +135,21 @@ function Navigation.isWalkable(startPos, endPos)
 end
 
 
---- Finds the closest walkable node from the player's current position in terms of index order.
+--- Finds the closest walkable node from the player's current position in reverse order (from last to first).
 -- @param currentPath table The current path consisting of nodes.
 -- @param myPos Vector3 The player's current position.
 -- @param currentNodeIndex number The index of the current node in the path.
--- @return number, Node, Vector3 The index, node, and position of the closest walkable node in terms of index order.
+-- @return number, Node, Vector3 The index, node, and position of the closest walkable node in reverse order.
 function Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
-    local lastWalkableNodeIndex = currentNodeIndex
-    local lastWalkableNode = currentPath[currentNodeIndex]
-    local lastWalkableNodePos = lastWalkableNode.pos
+    -- Initialize variables for storing the last walkable node information
+    local lastWalkableNodeIndex = nil
+    local lastWalkableNode = nil
+    local lastWalkableNodePos = nil
 
-    -- Start from the node immediately after the current node
-    for i = currentNodeIndex + 1, #currentPath do
+    -- Start the search from the current node, moving towards the first node
+    for i = currentNodeIndex, 1, -1 do
         local node = currentPath[i]
-        Navigation.FixNode(node)
+        Navigation.FixNode(node) -- Ensure the node is fixed before checking
         local nodePos = node.pos
 
         -- Check if the node is walkable
@@ -179,14 +159,15 @@ function Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
             lastWalkableNode = node
             lastWalkableNodePos = nodePos
         else
-            -- A non-walkable node is found, return the last walkable node before it
+            -- Stop searching when a non-walkable node is found
             break
         end
     end
 
-    -- Return the last walkable node information
+    -- Return the last walkable node information found in the search
     return lastWalkableNodeIndex, lastWalkableNode, lastWalkableNodePos
 end
+
 
 
 ---@param node NavNode
