@@ -252,6 +252,14 @@ local function OnCreateMove(userCmd)
                 previousTask = nil
             end
         end
+        local memUsage2 = collectgarbage("count")
+        if memUsage2 / 1024 > 600 then
+            collectgarbage()
+            collectgarbage()
+            collectgarbage()
+
+            Log:Info("Trigger GC")
+        end
     end
 
     local flags = me:GetPropInt( "m_fFlags" );
