@@ -22,8 +22,8 @@ local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
     drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
-    drawCurrentNode = true, -- Draws the current node
-    lookatpath = false, -- Look at where we are walking
+    drawCurrentNode = false, -- Draws the current node
+    lookatpath = true, -- Look at where we are walking
     smoothLookAtPath = true, -- Set this to true to enable smooth look at path
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
@@ -41,10 +41,9 @@ local Tasks = table.readOnly {
     None = 0,
     Objective = 1,
     Health = 2,
-    Follow = 3,
-    Medic = 4,
 }
 
+local jumptimer = 0;
 local currentTask = Tasks.Objective
 local taskTimer = Timer.new()
 local Math = lnxLib.Utils.Math
@@ -99,33 +98,36 @@ local function Draw3DBox(size, pos)
     end
 end
 
-local function Normalize(vec)
-    local length = math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z)
-    return Vector3(vec.x / length, vec.y / length, vec.z / length)
+-- Normalize a vector
+local function NormalizeVector(v)
+    local length = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+    return Vector3(v.x / length, v.y / length, v.z / length)
 end
 
-local function L_line(start_pos, end_pos, secondary_line_size)
-    if not (start_pos and end_pos) then
-        return
+local function arrowPathArrow2(startPos, endPos, width)
+    if not (startPos and endPos) then return nil, nil end
+
+    local direction = endPos - startPos
+    local length = direction:Length()
+    if length == 0 then return nil, nil end
+    direction = NormalizeVector(direction)
+
+    local perpDir = Vector3(-direction.y, direction.x, 0)
+    local leftBase = startPos + perpDir * width
+    local rightBase = startPos - perpDir * width
+
+    local screenStartPos = client.WorldToScreen(startPos)
+    local screenEndPos = client.WorldToScreen(endPos)
+    local screenLeftBase = client.WorldToScreen(leftBase)
+    local screenRightBase = client.WorldToScreen(rightBase)
+
+    if screenStartPos and screenEndPos and screenLeftBase and screenRightBase then
+        draw.Line(screenStartPos[1], screenStartPos[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenLeftBase[1], screenLeftBase[2], screenEndPos[1], screenEndPos[2])
+        draw.Line(screenRightBase[1], screenRightBase[2], screenEndPos[1], screenEndPos[2])
     end
-    local direction = end_pos - start_pos
-    local direction_length = direction:Length()
-    if direction_length == 0 then
-        return
-    end
-    local normalized_direction = Normalize(direction)
-    local perpendicular = Vector3(normalized_direction.y, -normalized_direction.x, 0) * secondary_line_size
-    local w2s_start_pos = client.WorldToScreen(start_pos)
-    local w2s_end_pos = client.WorldToScreen(end_pos)
-    if not (w2s_start_pos and w2s_end_pos) then
-        return
-    end
-    local secondary_line_end_pos = start_pos + perpendicular
-    local w2s_secondary_line_end_pos = client.WorldToScreen(secondary_line_end_pos)
-    if w2s_secondary_line_end_pos then
-        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_end_pos[1], w2s_end_pos[2])
-        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_secondary_line_end_pos[1], w2s_secondary_line_end_pos[2])
-    end
+
+    return leftBase, rightBase
 end
 
 --[[ Callbacks ]]
@@ -167,6 +169,7 @@ local function OnDraw()
             local screenPos = client.WorldToScreen(nodePos)
             if not screenPos then goto continue end
 
+            local x, y = screenPos[1], screenPos[2]
             draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square centered at (x, y)
 
             -- Node IDs
@@ -191,23 +194,15 @@ local function OnDraw()
             local screenPos2 = client.WorldToScreen(node2Pos)
             if not screenPos1 or not screenPos2 then goto continue end
 
-            if node1Pos and node2Pos then
-                L_line(node1Pos, node2Pos, 22)  -- Adjust the size for the perpendicular segment as needed
-            end
-            ::continue::
-        end
+            draw.Line(screenPos1[1], screenPos1[2], screenPos2[1], screenPos2[2])
 
-        -- Draw a line from the player to the second node from the end
-        local node1 = currentPath[#currentPath]
-        if node1 then
-            local node1 = Vector3(node1.x, node1.y, node1.z)
-            L_line(myPos, node1, 22)
+            ::continue::
         end
     end
 
     -- Draw current node
     if options.drawCurrentNode and currentPath then
-        draw.Color(255, 0, 0, 255)
+        draw.Color(255, 255, 255, 255)
 
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
@@ -231,26 +226,23 @@ local function OnCreateMove(userCmd)
         return
     end
 
-    --if not gamerules.IsMatchTypeCasual() then return end -- return if not in casual.
-
-    -- emergency healthpack task
+    -- Update the current task
     if taskTimer:Run(0.7) then
         -- make sure we're not being healed by a medic before running health logic
         if (me:GetHealth() / me:GetMaxHealth()) * 100 < options.SelfHealTreshold and not me:InCond(TFCond_Healing) then
             if currentTask ~= Tasks.Health and options.shouldfindhealth then
                 Log:Info("Switching to health task")
                 Navigation.ClearPath()
-                previousTask = currentTask
             end
 
             currentTask = Tasks.Health
         else
-            if previousTask and currentTask ~= previousTask then
-                Log:Info("Switching back to previous task")
+            if currentTask ~= Tasks.Objective then
+                Log:Info("Switching to objective task")
                 Navigation.ClearPath()
-                currentTask = previousTask
-                previousTask = nil
             end
+
+            currentTask = Tasks.Objective
         end
         local memUsage2 = collectgarbage("count")
         if memUsage2 / 1024 > 600 then
@@ -262,7 +254,6 @@ local function OnCreateMove(userCmd)
         end
     end
 
-    local flags = me:GetPropInt( "m_fFlags" );
     local myPos = me:GetAbsOrigin()
     local currentPath = Navigation.GetCurrentPath()
 
@@ -270,55 +261,50 @@ local function OnCreateMove(userCmd)
 
     if currentPath then
         -- Move along path
+
+        -- auto melee fix
         if userCmd:GetForwardMove() ~= 0 or userCmd:GetSideMove() ~= 0 then
-            currentNodeTicks = currentNodeTicks + 1
-            if currentNodeTicks > 66 then
-                Navigation.ClearPath()
-                currentNodeTicks = 0
-            end
+            Navigation.ClearPath()
             currentNodeTicks = 0
             return
         end
 
         local currentNode = currentPath[currentNodeIndex]
-        local currentNodePos = currentNode.pos
+        local currentNodePos = Vector3(currentNode.x, currentNode.y, currentNode.z)
 
         if options.lookatpath then
             if currentNodePos == nil then
                 return
             else
-                local melnx = WPlayer.GetLocal()
-                local angles = Lib.Utils.Math.PositionAngles(melnx:GetEyePos(), currentNodePos)
-                angles.x = 0
+            local melnx = WPlayer.GetLocal()    
+            local angles = Lib.Utils.Math.PositionAngles(melnx:GetEyePos(), currentNodePos)--Math.PositionAngles(me:GetAbsOrigin() + me:GetPropVector("localdata", "m_vecViewOffset[0]"), currentNodePos)
+            angles.x = 0
 
-                if options.smoothLookAtPath then
-                    local currentAngles = userCmd.viewangles
-                    local deltaAngles = {x = angles.x - currentAngles.x, y = angles.y - currentAngles.y}
+            if options.smoothLookAtPath then
+                local currentAngles = userCmd.viewangles
+                local deltaAngles = {x = angles.x - currentAngles.x, y = angles.y - currentAngles.y}
 
-                    deltaAngles.y = math.fmod(deltaAngles.y + 180, 360) - 180
+                while deltaAngles.y > 180 do deltaAngles.y = deltaAngles.y - 360 end
+                while deltaAngles.y < -180 do deltaAngles.y = deltaAngles.y + 360 end
 
-                    angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.5, currentAngles.y + deltaAngles.y * smoothFactor, 0)
-                end
-
-                engine.SetViewAngles(angles)
+                angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.5, currentAngles.y + deltaAngles.y * smoothFactor, 0)
+            end
+            --Credits to catt (pp021)
+            engine.SetViewAngles(angles)
             end
         end
 
         local dist = (myPos - currentNodePos):Length()
-        if dist < 27 then
+        if dist < 22 then
             currentNodeTicks = 0
-            for i = #currentPath, currentNodeIndex + 1, -1 do
-                table.remove(currentPath, i)
-            end
-
             currentNodeIndex = currentNodeIndex - 1
+            table.remove(currentPath)
             if currentNodeIndex < 1 then
                 Navigation.ClearPath()
                 Log:Info("Reached end of path")
-                --currentTask = Tasks.None
+                currentTask = Tasks.None
             end
         else
-            -- Increment the current node ticks
             currentNodeTicks = currentNodeTicks + 1
 
             -- Check if the next node is closer
@@ -328,82 +314,31 @@ local function OnCreateMove(userCmd)
                 local nextDist = (myPos - nextNodePos):Length()
 
                 if nextDist < dist then
-                    -- Closer node found, update current node and path
                     Log:Info("Skipping to closer node %d", currentNodeIndex - 1)
                     currentNodeIndex = currentNodeIndex - 1
                     currentNode = nextNode
                     currentNodePos = nextNodePos
                     dist = nextDist
-                    currentNodeTicks = 0
-                    for i = #currentPath, currentNodeIndex + 1, -1 do
-                        table.remove(currentPath, i)
-                    end
                 end
             end
 
-            -- Once at the closest node, check for the furthest walkable node with smallest index
-            if currentNodeIndex > 1 then
-                local furthestNodeIndex, furthestNode, furthestNodePos = Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
-
-                if furthestNodeIndex and furthestNodeIndex < currentNodeIndex then
-                    -- Furthest walkable node found, update current node and path
-                    Log:Info(string.format("Skipping to furthest walkable node %d", furthestNodeIndex))
-                    currentNodeIndex = furthestNodeIndex
-                    currentNode = furthestNode
-                    currentNodePos = furthestNodePos
-
-                    for i = #currentPath, currentNodeIndex + 1, -1 do
-                        table.remove(currentPath, i)
-                    end
-                end
-            end
-
-            -- Check if the path is completed
-            if #currentPath == 0 then
-                Navigation.ClearPath()
-                Log:Info("Reached end of path")
-                --currentTask = Tasks.None
-            else
-                -- Continue path following towards the current node
-                Lib.TF2.Helpers.WalkTo(userCmd, me, currentNodePos)
-            end
+            Lib.TF2.Helpers.WalkTo(userCmd, me, currentNodePos)
         end
 
         -- Jump if stuck
-        if not me:InCond(TFCond_Zoomed) and me:EstimateAbsVelocity():Length() < 50 and currentNodeTicks > 20 then
-            --basic autojump when on ground
-            if flags & FL_ONGROUND == 1 then
-                userCmd:SetButtons(userCmd.buttons & (~IN_DUCK))
-                userCmd:SetButtons(userCmd.buttons | IN_JUMP) --userCmd.buttons = userCmd.buttons | IN_JUMP
-            else
-                userCmd:SetButtons(userCmd.buttons & (~IN_JUMP))
-            end
+        if currentNodeTicks > 175 and not me:InCond(TFCond_Zoomed) and me:EstimateAbsVelocity():Length() < 50 then
+            --hold down jump for half a second or something i dont know how long it is
+            jumptimer = jumptimer + 1;
+            userCmd.buttons = userCmd.buttons | IN_JUMP
         end
 
         -- Repath if stuck
-        if currentNodeTicks > 40 and me:EstimateAbsVelocity():Length() < 150 then
+        if currentNodeTicks > 300 then
             local viewPos = me:GetAbsOrigin() + Vector3(0, 0, 72)
-            local minVector = Vector3(-24, -24, 0)
-            local maxVector = Vector3(24, 24, 82)
-            local traceResult1 = engine.TraceHull(myPos, currentNodePos, minVector, maxVector, MASK_SHOT_HULL)
-            if traceResult1.fraction < 0.9 then
-                -- Path to the next node is blocked
+            local trace = engine.TraceLine(viewPos, currentNodePos, MASK_SHOT_HULL)
+            if trace.fraction < 1.0 then
                 Log:Warn("Path to node %d is blocked, removing connection and repathing...", currentNodeIndex)
-                -- Check that the current node and the next node exist in the path
-                if currentPath[currentNodeIndex] and currentPath[currentNodeIndex + 1] then
-                    -- Remove the connection between the current node and the next node
-                    Navigation.RemoveConnection(currentPath[currentNodeIndex], currentPath[currentNodeIndex + 1])
-                elseif currentPath[currentNodeIndex] and not currentPath[currentNodeIndex + 1] and currentNodeIndex > 1 then
-                    -- If there's no next node, but there is a previous node, remove connection between the previous and the current node
-                    Navigation.RemoveConnection(currentPath[currentNodeIndex - 1], currentPath[currentNodeIndex])
-                end
-                -- Clear the current path and recalculate
-                Navigation.ClearPath()
-                currentNodeTicks = 0
-                -- Trigger repathing logic here if necessary (depends on the rest of your code)
-            else
-                -- Clear the current path and recalculate
-                Log:Warn("Path to node %d is stuck but not blocked, repathing...", currentNodeIndex)
+                Navigation.RemoveConnection(currentNode, currentPath[currentNodeIndex - 1])
                 Navigation.ClearPath()
                 currentNodeTicks = 0
             end
@@ -418,12 +353,23 @@ local function OnCreateMove(userCmd)
             local objectives = nil
 
             -- map check
-            if engine.GetMapName():lower():find("cp_") then
-                -- cp
-                objectives = entities.FindByClass("CTFObjectiveResource")
-            elseif engine.GetMapName():lower():find("pl_") then
+            if engine.GetMapName():lower():find("pl_") then
                 -- pl
                 objectives = entities.FindByClass("CObjectCartDispenser")
+            elseif engine.GetMapName():lower():find("plr_") then
+                -- plr
+                payloads = entities.FindByClass("CObjectCartDispenser")
+                if #payloads == 1 and payloads[1]:GetTeamNumber() ~= me:GetTeamNumber() then
+                    goalNode = Navigation.GetClosestNode(payloads[1]:GetAbsOrigin())
+                    Log:Info("Found payload1 at node %d", goalNode.id)
+                else
+                    for idx, entity in pairs(payloads) do
+                        if entity:GetTeamNumber() == me:GetTeamNumber() then
+                            goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
+                            Log:Info("Found payload at node %d", goalNode.id)
+                        end
+                    end
+                end
             elseif engine.GetMapName():lower():find("ctf_") then
                 -- ctf
                 local myItem = me:GetPropInt("m_hItem")
@@ -437,7 +383,8 @@ local function OnCreateMove(userCmd)
                     end
                 end
             else
-                Log:Warn("Unsupported Gamemode, try CTF or PL")
+                Log:Warn("Unsupported Gamemode, try CTF, PL, or PLR")
+                
             end
 
             -- Ensure objectives is a table before iterating
@@ -459,19 +406,21 @@ local function OnCreateMove(userCmd)
                     end
                 end
             else
-                --Log:Warn("No objectives found; iterate failure.")
+                Log:Warn("No objectives found; iterate failure.")
             end
 
-            -- Specific checks for PL gamemode
-            if engine.GetMapName():lower():find("pl_") and entity and goalNode then
-                local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
-                local thresholdDistance = 80
+            -- Check if the distance between player and payload is greater than a threshold
+            if engine.GetMapName():lower():find("pl_") then
+                if entity then
+                    local distanceToPayload = (myPos - entity:GetAbsOrigin()):Length()
+                    local thresholdDistance = 80
 
-                if distanceToPayload > thresholdDistance then
-                    Log:Info("Payload too far from player, pathing closer.")
-                    -- If too far, update the path to get closer
-                    Navigation.FindPath(startNode, goalNode)
-                    currentNodeIndex = #Navigation.GetCurrentPath()
+                    if distanceToPayload > thresholdDistance then
+                        Log:Info("Payload too far from player, pathing closer.")
+                        -- If too far, update the path to get closer
+                        Navigation.FindPath(startNode, goalNode)
+                        currentNodeIndex = #Navigation.GetCurrentPath()
+                    end
                 end
             end
 
@@ -499,8 +448,8 @@ local function OnCreateMove(userCmd)
         end
 
         -- Check if we found a start and goal node
-        if not goalNode then
-            Log:Warn("Could not find new goal node")
+        if not startNode or not goalNode then
+            Log:Warn("Could not find new start or goal node")
             return
         end
 
@@ -556,43 +505,6 @@ Commands.Register("pf_reload", function()
     LoadNavFile()
 end)
 
--- credits: snipergaming888 (Sydney)
-
-local switch = 0;
-local switchmax = 1;
-
-
-local function newmap_eventNav(event)
-    if event:GetName() == "game_newmap" then
-        LoadNavFile()
-    end
-end
-
-local function Restart(event)
-
-    --[[local eventName = event:GetName()
-    Log:Info("Event occurred: " .. eventName)]] --debug
-
-    if event:GetName() == "teamplay_round_start" then
-        switch = switch + 1;
-        LoadNavFile()
-            if switch == switchmax then 
-                switch = 0;
-            end
-            Log:Warn("path outdated repathing...", currentNodeIndex)
-            Navigation.ClearPath()
-            currentNodeTicks = 0
-    end
-    if event:GetName() == "teamplay_round_active" then
-        Log:Warn("now players can move repathing...", currentNodeIndex)
-        Navigation.ClearPath()
-        currentNodeTicks = 0
-    end
-end
-
-callbacks.Register("FireGameEvent", "newm_event", newmap_eventNav)
-callbacks.Register("FireGameEvent", "teamplay_restart_round", Restart)
-
 -- Calculates the path from start to goal
 Commands.Register("pf", function(args)
     if args:size() ~= 2 then
@@ -626,3 +538,590 @@ end)
 
 Notify.Alert("Lmaobot loaded!")
 LoadNavFile()
+
+end)
+__bundle_register("Lmaobot.Navigation", function(require, _LOADED, __bundle_register, __bundle_modules)
+---@alias Connection { count: integer, connections: integer[] }
+---@alias Node { x: number, y: number, z: number, id: integer, c: { [1]: Connection, [2]: Connection, [3]: Connection, [4]: Connection } }
+
+local Common = require("Lmaobot.Common")
+local SourceNav = require("Lmaobot.SourceNav")
+local AStar = require("Lmaobot.A-Star")
+local Lib, Log = Common.Lib, Common.Log
+
+local FS = Lib.Utils.FileSystem
+
+local function DistTo(a, b)
+    return math.sqrt((a.x - b.x) ^ 2 + (a.y - b.y) ^ 2 + (a.z - b.z) ^ 2)
+end
+
+---@class Pathfinding
+local Navigation = {}
+
+---@type Node[]
+local Nodes = {}
+
+---@type Node[]|nil
+local CurrentPath = nil
+
+---@param nodes Node[]
+function Navigation.SetNodes(nodes)
+    Nodes = nodes
+end
+
+---@return Node[]
+function Navigation.GetNodes()
+    return Nodes
+end
+
+---@return Node[]|nil
+---@return Node[]|nil
+function Navigation.GetCurrentPath()
+    return CurrentPath
+end
+
+function Navigation.ClearPath()
+    CurrentPath = nil
+end
+
+---@param id integer
+---@return Node
+function Navigation.GetNodeByID(id)
+    return Nodes[id]
+end
+
+-- Removes the connection between two nodes (if it exists)
+function Navigation.RemoveConnection(nodeA, nodeB)
+    for dir = 1, 4 do
+		local conDir = nodeA.c[dir]
+        for i, con in pairs(conDir.connections) do
+            if con == nodeB.id then
+                print("Removing connection between " .. nodeA.id .. " and " .. nodeB.id)
+                table.remove(conDir.connections, i)
+                conDir.count = conDir.count - 1
+                break
+            end
+        end
+	end
+end
+
+function Navigation.RemoveNode(nodeToRemove)
+    -- Remove connections to the node from other nodes
+    for _, node in pairs(Navigation.nodes) do
+        Navigation.RemoveConnection(node, nodeToRemove)
+    end
+
+    -- Remove the node from the nodes table
+    for i, node in pairs(Navigation.nodes) do
+        if node == nodeToRemove then
+            print("Removing node " .. nodeToRemove.id)
+            table.remove(Navigation.nodes, i)
+            break
+        end
+    end
+end
+
+---@param navFile string
+function Navigation.LoadFile(navFile)
+    -- Read nav file
+    local rawNavData = FS.Read("tf/" .. navFile)
+    assert(rawNavData, "Failed to read nav file: " .. navFile)
+
+    -- Parse nav file
+    local navData = SourceNav.parse(rawNavData)
+    Log:Info("Parsed %d areas", #navData.areas)
+
+    -- Convert nav data to usable format
+    local navNodes = {}
+    for _, area in ipairs(navData.areas) do
+        local cX = (area.north_west.x + area.south_east.x) // 2
+        local cY = (area.north_west.y + area.south_east.y) // 2
+        local cZ = (area.north_west.z + area.south_east.z) // 2
+
+        navNodes[area.id] = { x = cX, y = cY, z = cZ, id = area.id, c = area.connections }
+    end
+
+    navNodes[0] = { x = 0, y = 0, z = 0, id = 0, c = {} }
+
+    Navigation.SetNodes(navNodes)
+end
+
+---@param pos Vector3|{ x:number, y:number, z:number }
+---@return Node
+function Navigation.GetClosestNode(pos)
+    local closestNode = nil
+    local closestDist = math.huge
+
+    for _, node in pairs(Nodes) do
+        local dist = DistTo(node, pos)
+        if dist < closestDist then
+            closestNode = node
+            closestDist = dist
+        end
+    end
+
+    return closestNode
+end
+
+-- Returns all adjacent nodes of the given node
+---@param node Node
+---@param nodes Node[]
+local function GetAdjacentNodes(node, nodes)
+	local adjacentNodes = {}
+
+	for dir = 1, 4 do
+		local conDir = node.c[dir]
+        for _, con in pairs(conDir.connections) do
+            local conNode = nodes[con]
+            if conNode and node.z + 70 > conNode.z then
+                table.insert(adjacentNodes, conNode)
+            end
+        end
+	end
+
+	return adjacentNodes
+end
+
+---@param startNode Node
+---@param goalNode Node
+function Navigation.FindPath(startNode, goalNode)
+    if not startNode then
+        Log:Warn("Invalid start node %d!", startNode.id)
+        return
+    end
+
+    if not goalNode then
+        Log:Warn("Invalid goal node %d!", goalNode.id)
+        return
+    end
+
+    CurrentPath = AStar.Path(startNode, goalNode, Nodes, GetAdjacentNodes)
+    if not CurrentPath then
+        Log:Error("Failed to find path from %d to %d!", startNode.id, goalNode.id)
+    end
+end
+
+return Navigation
+
+end)
+__bundle_register("Lmaobot.A-Star", function(require, _LOADED, __bundle_register, __bundle_modules)
+--[[
+	A-Star Algorithm for Lmaobox
+	Credits: github.com/GlorifiedPig/Luafinding
+]]
+
+local Heap = require("Lmaobot.Heap")
+
+---@alias PathNode { id : integer, x : number, y : number, z : number }
+
+---@class AStar
+local AStar = {}
+
+local function HeuristicCostEstimate(nodeA, nodeB)
+	return math.sqrt((nodeB.x - nodeA.x) ^ 2 + (nodeB.y - nodeA.y) ^ 2 + (nodeB.z - nodeA.z) ^ 2)
+end
+
+local function ReconstructPath(current, previous)
+	local path = { current }
+	while previous[current] do
+		current = previous[current]
+		table.insert(path, current)
+	end
+
+	return path
+end
+
+---@param start PathNode
+---@param goal PathNode
+---@param nodes PathNode[]
+---@param adjacentFun fun(node : PathNode, nodes : PathNode[]) : PathNode[]
+---@return PathNode[]|nil
+function AStar.Path(start, goal, nodes, adjacentFun)
+	local openSet, closedSet = Heap.new(), {}
+	local gScore, fScore = {}, {}
+	gScore[start] = 0
+	fScore[start] = HeuristicCostEstimate(start, goal)
+
+	openSet.Compare = function(a, b) return fScore[a] < fScore[b] end
+	openSet:push(start)
+
+	local previous = {}
+	while not openSet:empty() do
+		---@type PathNode
+		local current = openSet:pop()
+
+		if not closedSet[current] then
+
+			-- Found the goal
+			if current.id == goal.id then
+				openSet:clear()
+				return ReconstructPath(current, previous)
+			end
+
+			closedSet[current] = true
+
+			-- Traverse adjacent nodes
+			local adjacentNodes = adjacentFun(current, nodes)
+			for i = 1, #adjacentNodes do
+				local neighbor = adjacentNodes[i]
+				if not closedSet[neighbor] then
+					local tentativeGScore = gScore[current] + HeuristicCostEstimate(current, neighbor)
+
+					local neighborGScore = gScore[neighbor]
+					if not neighborGScore or tentativeGScore < neighborGScore then
+						gScore[neighbor] = tentativeGScore
+						fScore[neighbor] = tentativeGScore + HeuristicCostEstimate(neighbor, goal)
+						previous[neighbor] = current
+						openSet:push(neighbor)
+					end
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
+return AStar
+
+end)
+__bundle_register("Lmaobot.Heap", function(require, _LOADED, __bundle_register, __bundle_modules)
+--[[
+    Enhanced Heap implementation in Lua.
+    Modifications made for robustness and preventing memory leaks.
+    Credits: github.com/GlorifiedPig/Luafinding
+]]
+
+local Heap = {}
+Heap.__index = Heap
+
+-- Constructor for the heap.
+-- @param compare? Function for comparison, defining the heap property. Defaults to a min-heap.
+function Heap.new(compare)
+    return setmetatable({
+        _data = {},
+        _size = 0,
+        Compare = compare or function(a, b) return a < b end
+    }, Heap)
+end
+
+-- Helper function to maintain the heap property while inserting an element.
+local function sortUp(heap, index)
+    while index > 1 do
+        local parentIndex = math.floor(index / 2)
+        if heap.Compare(heap._data[index], heap._data[parentIndex]) then
+            heap._data[index], heap._data[parentIndex] = heap._data[parentIndex], heap._data[index]
+            index = parentIndex
+        else
+            break
+        end
+    end
+end
+
+-- Helper function to maintain the heap property after removing the root element.
+local function sortDown(heap, index)
+    while true do
+        local leftIndex, rightIndex = 2 * index, 2 * index + 1
+        local smallest = index
+
+        if leftIndex <= heap._size and heap.Compare(heap._data[leftIndex], heap._data[smallest]) then
+            smallest = leftIndex
+        end
+        if rightIndex <= heap._size and heap.Compare(heap._data[rightIndex], heap._data[smallest]) then
+            smallest = rightIndex
+        end
+
+        if smallest ~= index then
+            heap._data[index], heap._data[smallest] = heap._data[smallest], heap._data[index]
+            index = smallest
+        else
+            break
+        end
+    end
+end
+
+-- Checks if the heap is empty.
+function Heap:empty()
+    return self._size == 0
+end
+
+-- Clears the heap, allowing Lua's garbage collector to reclaim memory.
+function Heap:clear()
+    for i = 1, self._size do
+        self._data[i] = nil
+    end
+    self._size = 0
+end
+
+-- Adds an item to the heap.
+-- @param item The item to be added.
+function Heap:push(item)
+    self._size = self._size + 1
+    self._data[self._size] = item
+    sortUp(self, self._size)
+end
+
+-- Removes and returns the root element of the heap.
+function Heap:pop()
+    if self._size == 0 then
+        return nil
+    end
+    local root = self._data[1]
+    self._data[1] = self._data[self._size]
+    self._data[self._size] = nil  -- Clear the reference to the removed item
+    self._size = self._size - 1
+    if self._size > 0 then
+        sortDown(self, 1)
+    end
+    return root
+end
+
+return Heap
+
+end)
+__bundle_register("Lmaobot.SourceNav", function(require, _LOADED, __bundle_register, __bundle_modules)
+-- author : https://github.com/sapphyrus
+-- ported to tf2 by moonverse
+
+local unpack = table.unpack
+local struct = {
+    unpack = string.unpack,
+    pack = string.pack
+}
+
+local struct_buffer_mt = {
+    __index = {
+        seek = function(self, seek_val, seek_mode)
+            if seek_mode == nil or seek_mode == "CUR" then
+                self.offset = self.offset + seek_val
+            elseif seek_mode == "END" then
+                self.offset = self.len + seek_val
+            elseif seek_mode == "SET" then
+                self.offset = seek_val
+            end
+        end,
+        unpack = function(self, format_str)
+            local unpacked = { struct.unpack(format_str, self.raw, self.offset) }
+
+            if self.size_cache[format_str] == nil then
+                self.size_cache[format_str] = struct.pack(format_str, unpack(unpacked)):len()
+            end
+            self.offset = self.offset + self.size_cache[format_str]
+
+            return unpack(unpacked)
+        end,
+        unpack_vec = function(self)
+            local x, y, z = self:unpack("fff")
+            return {
+                x = x,
+                y = y,
+                z = z
+            }
+        end
+    }
+}
+
+local function struct_buffer(raw)
+    return setmetatable({
+        raw = raw,
+        len = raw:len(),
+        size_cache = {},
+        offset = 1
+    }, struct_buffer_mt)
+end
+
+-- cache
+local navigation_mesh_cache = {}
+
+-- use checksum so we dont have to keep the whole thing in memory
+local function crc32(s, lt)
+    -- return crc32 checksum of string as an integer
+    -- use lookup table lt if provided or create one on the fly
+    -- if lt is empty, it is initialized.
+    lt = lt or {}
+    local b, crc, mask
+    if not lt[1] then -- setup table
+        for i = 1, 256 do
+            crc = i - 1
+            for _ = 1, 8 do -- eight times
+                mask = -(crc & 1)
+                crc = (crc >> 1) ~ (0xedb88320 & mask)
+            end
+            lt[i] = crc
+        end
+    end
+
+    -- compute the crc
+    crc = 0xffffffff
+    for i = 1, #s do
+        b = string.byte(s, i)
+        crc = (crc >> 8) ~ lt[((crc ~ b) & 0xFF) + 1]
+    end
+    return ~crc & 0xffffffff
+end
+
+local function parse(raw, use_cache)
+    local checksum
+    if use_cache == nil or use_cache then
+        checksum = crc32(raw)
+        if navigation_mesh_cache[checksum] ~= nil then
+            return navigation_mesh_cache[checksum]
+        end
+    end
+
+    local buf = struct_buffer(raw)
+
+    local self = {}
+    self.magic, self.major, self.minor, self.bspsize, self.analyzed, self.places_count = buf:unpack("IIIIbH")
+
+    assert(self.magic == 0xFEEDFACE, "invalid magic, expected 0xFEEDFACE")
+    assert(self.major == 16, "invalid major version, expected 16")
+
+    -- place names
+    self.places = {}
+    for i = 1, self.places_count do
+        local place = {}
+        place.name_length = buf:unpack("H")
+
+        -- read but ignore null byte
+        place.name = buf:unpack(string.format("c%db", place.name_length - 1))
+
+        self.places[i] = place
+    end
+
+    -- areas
+    self.has_unnamed_areas, self.areas_count = buf:unpack("bI")
+    self.areas = {}
+    for i = 1, self.areas_count do
+        local area = {}
+        area.id, area.flags = buf:unpack("II")
+
+        area.north_west = buf:unpack_vec()
+        area.south_east = buf:unpack_vec()
+
+        area.north_east_z, area.south_west_z = buf:unpack("ff")
+
+        -- connections
+        area.connections = {}
+        for dir = 1, 4 do
+            local connections_dir = {}
+            connections_dir.count = buf:unpack("I")
+
+            connections_dir.connections = {}
+            for i = 1, connections_dir.count do
+                local target
+                target = buf:unpack("I")
+                connections_dir.connections[i] = target
+            end
+            area.connections[dir] = connections_dir
+        end
+
+        -- hiding spots
+        area.hiding_spots_count = buf:unpack("B")
+        area.hiding_spots = {}
+        for i = 1, area.hiding_spots_count do
+            local hiding_spot = {}
+            hiding_spot.id = buf:unpack("I")
+            hiding_spot.location = buf:unpack_vec()
+            hiding_spot.flags = buf:unpack("b")
+            area.hiding_spots[i] = hiding_spot
+        end
+
+        -- encounter paths
+        area.encounter_paths_count = buf:unpack("I")
+        area.encounter_paths = {}
+        for i = 1, area.encounter_paths_count do
+            local encounter_path = {}
+            encounter_path.from_id, encounter_path.from_direction, encounter_path.to_id, encounter_path.to_direction,
+                encounter_path.spots_count =
+            buf:unpack("IBIBB")
+
+            encounter_path.spots = {}
+            for i = 1, encounter_path.spots_count do
+                encounter_path.spots[i] = {}
+                encounter_path.spots[i].order_id, encounter_path.spots[i].distance = buf:unpack("IB")
+            end
+            area.encounter_paths[i] = encounter_path
+        end
+
+        area.place_id = buf:unpack("H")
+
+        -- ladders
+        area.ladders = {}
+        for i = 1, 2 do
+            area.ladders[i] = {}
+            area.ladders[i].connection_count = buf:unpack("I")
+
+            area.ladders[i].connections = {}
+            for i = 1, area.ladders[i].connection_count do
+                area.ladders[i].connections[i] = buf:unpack("I")
+            end
+        end
+
+        area.earliest_occupy_time_first_team, area.earliest_occupy_time_second_team = buf:unpack("ff")
+        area.light_intensity_north_west, area.light_intensity_north_east, area.light_intensity_south_east,
+            area.light_intensity_south_west =
+        buf:unpack("ffff")
+
+        -- visible areas
+        area.visible_areas = {}
+        area.visible_area_count = buf:unpack("I")
+        for i = 1, area.visible_area_count do
+            area.visible_areas[i] = {}
+            area.visible_areas[i].id, area.visible_areas[i].attributes = buf:unpack("Ib")
+        end
+        area.inherit_visibility_from_area_id = buf:unpack("I")
+
+        -- NOTE: Differnet value in CSGO/TF2
+        -- garbage?
+        self.garbage = buf:unpack('I')
+
+        self.areas[i] = area
+    end
+
+    -- ladders
+    self.ladders_count = buf:unpack("I")
+    self.ladders = {}
+    for i = 1, self.ladders_count do
+        local ladder = {}
+        ladder.id, ladder.width = buf:unpack("If")
+
+        ladder.top = buf:unpack_vec()
+        ladder.bottom = buf:unpack_vec()
+
+        ladder.length, ladder.direction = buf:unpack("fI")
+
+        ladder.top_forward_area_id, ladder.top_left_area_id, ladder.top_right_area_id, ladder.top_behind_area_id =
+        buf:unpack("IIII")
+        ladder.bottom_area_id = buf:unpack("I")
+
+        self.ladders[i] = ladder
+    end
+
+    if checksum ~= nil and navigation_mesh_cache[checksum] == nil then
+        navigation_mesh_cache[checksum] = self
+    end
+
+    return self
+end
+
+return {
+    parse = parse
+}
+end)
+__bundle_register("Lmaobot.Common", function(require, _LOADED, __bundle_register, __bundle_modules)
+---@class Common
+local Common = {}
+
+---@type boolean, LNXlib
+local libLoaded, Lib = pcall(require, "LNXlib")
+assert(libLoaded, "LNXlib not found, please install it!")
+assert(Lib.GetVersion() >= 0.94, "LNXlib version is too old, please update it!")
+Common.Lib = Lib
+
+Common.Log = Lib.Utils.Logger.new("Lmaobot")
+
+return Common
+
+end)
+return __bundle_require("__root")   
