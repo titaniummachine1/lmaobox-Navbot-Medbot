@@ -245,7 +245,7 @@ local function OnCreateMove(userCmd)
             currentTask = Tasks.Objective
         end
         local memUsage2 = collectgarbage("count")
-        if memUsage2 / 1024 > 600 then
+        if memUsage2 / 1024 > 250 then
             collectgarbage()
             collectgarbage()
             collectgarbage()
