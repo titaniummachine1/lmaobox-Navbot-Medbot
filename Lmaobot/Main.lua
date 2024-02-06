@@ -264,7 +264,6 @@ local function OnCreateMove(userCmd)
 
         -- auto melee fix
         if userCmd:GetForwardMove() ~= 0 or userCmd:GetSideMove() ~= 0 then
-            Navigation.ClearPath()
             currentNodeTicks = 0
             return
         end
