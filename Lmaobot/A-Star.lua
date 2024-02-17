@@ -8,10 +8,46 @@ local Heap = require("Lmaobot.Heap")
 
 local AStar = {}
 
--- Precompute adjacent nodes to reduce calculations in the main loop if possible.
+AStar.costCache = {}
 
 local function HeuristicCostEstimate(nodeA, nodeB)
-	return math.abs(nodeB.x - nodeA.x) + math.abs(nodeB.y - nodeA.y) + math.abs(nodeB.z - nodeA.z) -- Manhattan distance
+	-- Check if the nodes are valid
+	if not nodeA or not nodeB then
+		print("One or both nodes are nil, exiting function")
+		return nil
+	end
+
+	-- Check if the nodes have an id and pos
+	if not nodeA.id or not nodeA.pos or not nodeB.id or not nodeB.pos then
+		print("One or both nodes are missing required properties, exiting function")
+		return nil
+	end
+
+	-- Check if the cost is already cached
+	local costKey = nodeA.id .. "-" .. nodeB.id
+	local cachedCost = AStar.costCache[costKey]
+	if cachedCost then
+		-- Check if the cost is outdated
+		local currentTime = os.time()
+		if currentTime - cachedCost.time < 120 then
+			return cachedCost.cost
+		end
+	end
+
+	-- Calculate the cost directly from the nodes if it exists
+	if nodeA.cost and nodeB.cost then
+		local cost = nodeA.cost + nodeB.cost
+		AStar.costCache[costKey] = {cost = cost, time = os.time()}
+		return cost
+	end
+
+	-- If the cost does not exist, calculate the Manhattan distance
+	local dx = math.abs(nodeA.x - nodeB.x)
+	local dy = math.abs(nodeA.y - nodeB.y)
+	local dz = math.abs(nodeA.z - nodeB.z)
+	local cost = dx + dy + dz
+	AStar.costCache[costKey] = {cost = cost, time = os.time()}
+	return cost
 end
 
 local function ReconstructPath(current, previous)
@@ -23,22 +59,37 @@ local function ReconstructPath(current, previous)
 	return path  -- No need to reverse if you are ok with the path being from end to start
 end
 
-function AStar.Path(start, goal, nodes, adjacentFun)
-	local openSet, closedSet = Heap.new(), {}
-	local gScore, fScore = {}, {}
-	gScore[start] = 0
-	fScore[start] = HeuristicCostEstimate(start, goal)
+local cachedData
 
-	openSet.Compare = function(a, b) return fScore[a] < fScore[b] end
-	openSet:push(start)
+function AStar.Path(start, goal, nodes, adjacentFun, maxNodes)
+	maxNodes = maxNodes or 100
+	local openSet, closedSet, gScore, fScore, previous, processedNodes
 
-	local previous = {}
-	while not openSet:empty() do
+	if cachedData then
+		-- Continue from cached data
+		openSet, closedSet, gScore, fScore, previous, processedNodes = table.unpack(cachedData)
+		processedNodes = 0  -- Reset the processedNodes counter
+	else
+		-- Start a new pathfinding operation
+		openSet, closedSet = Heap.new(), {}
+		gScore, fScore = {}, {}
+		gScore[start] = 0
+		fScore[start] = HeuristicCostEstimate(start, goal)
+		openSet.Compare = function(a, b) return fScore[a] < fScore[b] end
+		openSet:push(start)
+		previous = {}
+		processedNodes = 0
+	end
+
+	while not openSet:empty() and processedNodes < maxNodes do
 		local current = openSet:pop()
 		if not closedSet[current] then
+			processedNodes = processedNodes + 1
+			--print("Processed nodes: ", processedNodes)  -- Print the current progress
 			if current.id == goal.id then
 				openSet:clear()
-				return ReconstructPath(current, previous)
+				cachedData = nil
+				return ReconstructPath(current, previous), false
 			end
 
 			closedSet[current] = true
@@ -55,7 +106,14 @@ function AStar.Path(start, goal, nodes, adjacentFun)
 			end
 		end
 	end
-	return nil
+
+	if not openSet:empty() then
+		-- Node limit reached, cache data and stop
+		cachedData = {openSet, closedSet, gScore, fScore, previous, processedNodes}
+		return nil, true
+	end
+
+	return nil, false
 end
 
 return AStar
