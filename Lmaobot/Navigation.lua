@@ -50,7 +50,20 @@ function Navigation.RemoveConnection(nodeA, nodeB)
         return
     end
 
-    --remove the reverse connection from nodeB to nodeA
+    -- Remove the connection from nodeA to nodeB
+    for dir = 1, 4 do
+        local conDir = nodeA.c[dir]
+        for i, con in ipairs(conDir.connections) do
+            if con == nodeB.id then
+                print("Removing connection between " .. nodeA.id .. " and " .. nodeB.id)
+                table.remove(conDir.connections, i)
+                conDir.count = conDir.count - 1
+                break  -- Exit the loop once the connection is found and removed
+            end
+        end
+    end
+
+    -- Remove the reverse connection from nodeB to nodeA
     for dir = 1, 4 do
         local conDir = nodeB.c[dir]
         for i, con in ipairs(conDir.connections) do
@@ -64,6 +77,66 @@ function Navigation.RemoveConnection(nodeA, nodeB)
     end
 end
 
+function Navigation.AddCostToConnection(nodeA, nodeB, cost)
+    -- If nodeA or nodeB is nil, exit the function
+    if not nodeA or not nodeB then
+        print("One or both nodes are nil, exiting function")
+        return
+    end
+
+    -- Add the cost from nodeA to nodeB
+    for dir = 1, 4 do
+        local conDir = nodeA.c[dir]
+        for i, con in ipairs(conDir.connections) do
+            if con == nodeB.id then
+                print("Adding cost between " .. nodeA.id .. " and " .. nodeB.id)
+                conDir.connections[i] = {node = con, cost = cost}
+                break  -- Exit the loop once the connection is found
+            end
+        end
+    end
+
+    -- Add the cost from nodeB to nodeA
+    for dir = 1, 4 do
+        local conDir = nodeB.c[dir]
+        for i, con in ipairs(conDir.connections) do
+            if con == nodeA.id then
+                print("Adding cost between " .. nodeB.id .. " and " .. nodeA.id)
+                conDir.connections[i] = {node = con, cost = cost}
+                break  -- Exit the loop once the connection is found
+            end
+        end
+    end
+end
+
+function Navigation.AddConnection(nodeA, nodeB)
+    -- If nodeA or nodeB is nil, exit the function
+    if not nodeA or not nodeB then
+        print("One or both nodes are nil, exiting function")
+        return
+    end
+
+    -- Add the connection from nodeA to nodeB
+    for dir = 1, 4 do
+        local conDir = nodeA.c[dir]
+        if not conDir.connections[nodeB.id] then
+            print("Adding connection between " .. nodeA.id .. " and " .. nodeB.id)
+            table.insert(conDir.connections, nodeB.id)
+            conDir.count = conDir.count + 1
+        end
+    end
+
+    -- Add the reverse connection from nodeB to nodeA
+    for dir = 1, 4 do
+        local conDir = nodeB.c[dir]
+        if not conDir.connections[nodeA.id] then
+            print("Adding reverse connection between " .. nodeB.id .. " and " .. nodeA.id)
+            table.insert(conDir.connections, nodeA.id)
+            conDir.count = conDir.count + 1
+        end
+    end
+end
+
 -- Constants for hull dimensions and trace masks
 local HULL_MIN = Vector3(-24, -24, 0)
 local HULL_MAX = Vector3(24, 24, 82)
@@ -71,34 +144,54 @@ local TRACE_MASK = MASK_PLAYERSOLID
 
 -- Fixes a node by adjusting its height based on TraceHull and TraceLine results
 -- Moves the node 18 units up and traces down to find a new valid position
----@param node NavNode
-function Navigation.FixNode(node)
-    local upVector = Vector3(0, 0, 27) -- Move node 18 units up
+-- @param nodeId integer The index of the node in the Nodes table
+-- @return Node The fixed node
+function Navigation.FixNode(nodeId)
+    local node = Navigation.GetNodeByID(nodeId)
+    if not node or not node.pos then
+        print("Node with ID " .. tostring(nodeId) .. " is invalid or missing position, exiting function")
+        return nil
+    end
+
+    -- Check if the node has already been fixed
+    if node.fixed then
+        return Nodes[nodeId]
+    end
+
+    local upVector = Vector3(0, 0, 18) -- Move node 18 units up
     local downVector = Vector3(0, 0, -72) -- Trace down a large distance
-    local traceMin = Vector3(-24, -24, 0)
-    local traceMax = Vector3(24, 24, 82)
 
     -- Perform a TraceHull directly downwards from the node's center position
     local nodePos = node.pos
-    if nodePos == nil then
-        print("Node position is nil, exiting function")
-        return
-    end
+    local centerTraceResult = engine.TraceHull(nodePos + upVector, nodePos + downVector, HULL_MIN, HULL_MAX, TRACE_MASK)
 
-    -- Perform a TraceHull directly downwards from the node's center position
-    local centerTraceResult = engine.TraceHull(nodePos + upVector, nodePos + downVector, traceMin, traceMax, TRACE_MASK)
+    -- Update node's center position in the Nodes table directly
+    Nodes[nodeId].z = centerTraceResult.endpos.z
+    Nodes[nodeId].pos = centerTraceResult.endpos
 
-    if centerTraceResult.fraction < 1 then
-        -- Update node's center position
-        node.z = centerTraceResult.endpos.z
-        node.pos = centerTraceResult.endpos
-    end
+    -- Mark the node as fixed
+    Nodes[nodeId].fixed = true
+
+    return Nodes[nodeId]  -- Return the fixed node
 end
 
 -- Checks for an obstruction between two points using a hull trace.
 local function isPathClear(startPos, endPos)
     local traceResult = engine.TraceHull(startPos, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
-    return traceResult.fraction == 1  -- If fraction is 1, path is clear.
+    if traceResult.fraction == 1 then
+        return true  -- If fraction is 1, path is clear.
+    else
+        -- If there's a collision, check the height difference
+        local heightDifference = math.abs(endPos.z - startPos.z)
+        if heightDifference < 72 then
+            -- If the height difference is less than 18, move startPos 18 units up and check again
+            local upVector = Vector3(0, 0, 72)
+            traceResult = engine.TraceHull(startPos + upVector, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
+            return traceResult.fraction == 1
+        else
+            return false
+        end
+    end
 end
 
 -- Checks if the ground is stable at a given position.
@@ -134,7 +227,6 @@ function Navigation.isWalkable(startPos, endPos)
     return binarySearch(startPos, endPos, maxDepth)
 end
 
-
 --- Finds the closest walkable node from the player's current position in reverse order (from last to first).
 -- @param currentPath table The current path consisting of nodes.
 -- @param myPos Vector3 The player's current position.
@@ -149,7 +241,7 @@ function Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
     -- Start the search from the current node, moving towards the first node
     for i = currentNodeIndex, 1, -1 do
         local node = currentPath[i]
-        Navigation.FixNode(node) -- Ensure the node is fixed before checking
+        node = Navigation.FixNode(node.id) -- Ensure the node is fixed before checking
         local nodePos = node.pos
 
         -- Check if the node is walkable
@@ -167,6 +259,85 @@ function Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
     -- Return the last walkable node information found in the search
     return lastWalkableNodeIndex, lastWalkableNode, lastWalkableNodePos
 end
+
+-- Constants
+local MIN_SPEED = 0   -- Minimum speed to avoid jittery movements
+local MAX_SPEED = 450 -- Maximum speed the player can move
+local TICK_RATE = 66  -- Number of ticks per second
+
+local ClassForwardSpeeds = {
+    [E_Character.TF2_Scout] = 400,
+    [E_Character.TF2_Soldier] = 240,
+    [E_Character.TF2_Pyro] = 300,
+    [E_Character.TF2_Demoman] = 280,
+    [E_Character.TF2_Heavy] = 230,
+    [E_Character.TF2_Engineer] = 300,
+    [E_Character.TF2_Medic] = 320,
+    [E_Character.TF2_Sniper] = 300,
+    [E_Character.TF2_Spy] = 320
+}
+
+-- Function to get forward speed by class
+function Navigation.GetForwardSpeedByClass(pLocal)
+    local pLocalClass = pLocal:GetPropInt("m_iClass")
+    return ClassForwardSpeeds[pLocalClass]
+end
+
+-- Function to compute the move direction
+local function ComputeMove(pCmd, a, b)
+    local diff = (b - a)
+    if diff:Length() == 0 then return Vector3(0, 0, 0) end
+
+    local x = diff.x
+    local y = diff.y
+    local vSilent = Vector3(x, y, 0)
+
+    local ang = vSilent:Angles()
+    local cPitch, cYaw, cRoll = pCmd:GetViewAngles()
+    local yaw = math.rad(ang.y - cYaw)
+    local move = Vector3(math.cos(yaw), -math.sin(yaw), 0)
+
+    return move
+end
+
+local function Normalize(vec)
+    local length = math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z)
+    return Vector3(vec.x / length, vec.y / length, vec.z / length)
+end
+
+-- Function to make the player walk to a destination smoothly
+function Navigation.WalkTo(pCmd, pLocal, pDestination)
+    local localPos = pLocal:GetAbsOrigin()
+    local distVector = pDestination - localPos
+    local dist = math.abs(distVector.x) + math.abs(distVector.y)
+    local currentSpeed = Navigation.GetForwardSpeedByClass(pLocal)  -- Max speed for the class
+    local currentVelocity = pLocal:EstimateAbsVelocity()
+    local velocityDirection = Normalize(currentVelocity)
+    local velocitySpeed = currentVelocity:Length()
+
+    -- Calculate distance that would be covered in one tick at the current speed
+    local distancePerTick = currentSpeed / TICK_RATE
+
+    -- Check if we are close enough to potentially overshoot the target in the next tick
+    if dist > distancePerTick then
+        -- If we are not close enough to overshoot, proceed at max speed
+        local result = ComputeMove(pCmd, localPos, pDestination)
+        pCmd:SetForwardMove(result.x * currentSpeed)
+        pCmd:SetSideMove(result.y * currentSpeed)
+    else
+        -- Calculate the required deceleration per tick to stop at the target
+        local decelPerTick = (velocitySpeed * velocitySpeed) / (2 * dist * TICK_RATE)
+        local requiredSpeed = velocitySpeed - decelPerTick
+        requiredSpeed = math.max(requiredSpeed, 0)  -- Ensure speed doesn't go below 0
+
+        -- Apply the calculated speed in the direction of the target
+        local result = ComputeMove(pCmd, localPos, pDestination)
+        pCmd:SetForwardMove(result.x * requiredSpeed)
+        pCmd:SetSideMove(result.y * requiredSpeed)
+    end
+end
+
+
 
 
 
@@ -302,9 +473,14 @@ local function GetAdjacentNodes(node, nodes)
 	return adjacentNodes
 end
 
+local InSearch = false
+function Navigation.isSearching()
+    return InSearch
+end
+
 ---@param startNode Node
 ---@param goalNode Node
-function Navigation.FindPath(startNode, goalNode)
+function Navigation.FindPath(startNode, goalNode, maxNodes)
     if not startNode then
         Log:Warn("Invalid start node %d!", startNode.id)
         return
@@ -315,8 +491,9 @@ function Navigation.FindPath(startNode, goalNode)
         return
     end
 
-    CurrentPath = AStar.Path(startNode, goalNode, Nodes, GetAdjacentNodes)
-    if not CurrentPath then
+    InSearch = false
+    CurrentPath, InSearch = AStar.Path(startNode, goalNode, Nodes, GetAdjacentNodes, maxNodes)
+    if not CurrentPath and not InSearch then
         Log:Error("Failed to find path from %d to %d!", startNode.id, goalNode.id)
     end
 end
