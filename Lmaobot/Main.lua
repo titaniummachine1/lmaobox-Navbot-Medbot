@@ -422,6 +422,20 @@ local function OnCreateMove(userCmd)
             elseif engine.GetMapName():lower():find("pl_") then
                 -- pl
                 objectives = entities.FindByClass("CObjectCartDispenser")
+            elseif engine.GetMapName():lower():find("plr_") then
+                -- plr
+                local payloads = entities.FindByClass("CObjectCartDispenser")
+                if #payloads == 1 and payloads[1]:GetTeamNumber() ~= me:GetTeamNumber() then
+                    goalNode = Navigation.GetClosestNode(payloads[1]:GetAbsOrigin())
+                    Log:Info("Found payload1 at node %d", goalNode.id)
+                else
+                    for idx, entity in pairs(payloads) do
+                        if entity:GetTeamNumber() == me:GetTeamNumber() then
+                            goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
+                            Log:Info("Found payload at node %d", goalNode.id)
+                        end
+                    end
+                end
             elseif engine.GetMapName():lower():find("ctf_") then
                 -- ctf
                 local myItem = me:GetPropInt("m_hItem")
