@@ -144,8 +144,8 @@ local TRACE_MASK = MASK_PLAYERSOLID
 
 -- Fixes a node by adjusting its height based on TraceHull and TraceLine results
 -- Moves the node 18 units up and traces down to find a new valid position
--- @param nodeId integer The index of the node in the Nodes table
--- @return Node The fixed node
+---@param nodeId integer The index of the node in the Nodes table
+---@return Node The fixed node
 function Navigation.FixNode(nodeId)
     local node = Navigation.GetNodeByID(nodeId)
     if not node or not node.pos then
@@ -158,16 +158,23 @@ function Navigation.FixNode(nodeId)
         return Nodes[nodeId]
     end
 
-    local upVector = Vector3(0, 0, 18) -- Move node 18 units up
+    local upVector = Vector3(0, 0, 72) -- Move node 18 units up
     local downVector = Vector3(0, 0, -72) -- Trace down a large distance
 
     -- Perform a TraceHull directly downwards from the node's center position
     local nodePos = node.pos
     local centerTraceResult = engine.TraceHull(nodePos + upVector, nodePos + downVector, HULL_MIN, HULL_MAX, TRACE_MASK)
 
-    -- Update node's center position in the Nodes table directly
-    Nodes[nodeId].z = centerTraceResult.endpos.z
-    Nodes[nodeId].pos = centerTraceResult.endpos
+    -- Check if the trace result is more than 0
+    if centerTraceResult.fraction > 0 then
+        -- Update node's center position in the Nodes table directly
+        Nodes[nodeId].z = centerTraceResult.endpos.z
+        Nodes[nodeId].pos = centerTraceResult.endpos
+    else
+        -- Lift the node 18 units up and keep it there
+        Nodes[nodeId].z = nodePos.z + 18
+        Nodes[nodeId].pos = Vector3(nodePos.x, nodePos.y, nodePos.z + 18)
+    end
 
     -- Mark the node as fixed
     Nodes[nodeId].fixed = true
@@ -175,22 +182,25 @@ function Navigation.FixNode(nodeId)
     return Nodes[nodeId]  -- Return the fixed node
 end
 
--- Checks for an obstruction between two points using a hull trace.
+-- Checks for an obstruction between two points using a line trace, then a hull trace if necessary.
 local function isPathClear(startPos, endPos)
+    -- First, use a line trace for a quick check
+    local lineTraceResult = engine.TraceLine(startPos, endPos, TRACE_MASK)
+    
+    -- If line trace fails, return false immediately
+    if lineTraceResult.fraction < 1 then
+        return false
+    end
+    
+    -- If line trace succeeds, use a hull trace for the actual check
     local traceResult = engine.TraceHull(startPos, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
     if traceResult.fraction == 1 then
         return true  -- If fraction is 1, path is clear.
     else
-        -- If there's a collision, check the height difference
-        local heightDifference = math.abs(endPos.z - startPos.z)
-        if heightDifference < 72 then
-            -- If the height difference is less than 18, move startPos 18 units up and check again
-            local upVector = Vector3(0, 0, 72)
-            traceResult = engine.TraceHull(startPos + upVector, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
-            return traceResult.fraction == 1
-        else
-            return false
-        end
+        -- If the height difference is less than 18, move startPos 18 units up and check again
+        local upVector = Vector3(0, 0, 72)
+        traceResult = engine.TraceHull(startPos + upVector, endPos, HULL_MIN, HULL_MAX, TRACE_MASK)
+        return traceResult.fraction == 1
     end
 end
 
@@ -244,14 +254,17 @@ function Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
         node = Navigation.FixNode(node.id) -- Ensure the node is fixed before checking
         local nodePos = node.pos
 
-        -- Check if the node is walkable
-        if Navigation.isWalkable(myPos, nodePos) then
+        -- Calculate the distance between the current position and the node
+        local distance = (myPos - nodePos):Length()
+
+        -- Check if the node is walkable and within 700 units
+        if distance <= 700 and Navigation.isWalkable(myPos, nodePos) then
             -- Update the last walkable node information
             lastWalkableNodeIndex = i
             lastWalkableNode = node
             lastWalkableNodePos = nodePos
-        else
-            -- Stop searching when a non-walkable node is found
+        elseif distance > 700 then
+            -- Break the loop if the node is beyond 700 units or higher than 72 units
             break
         end
     end

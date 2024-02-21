@@ -21,7 +21,7 @@ Log.Level = 0
 local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
     MaxNodesPerTick = 77, -- Maximum nodes to process per tick_count
-    MaxMemUsage = 1400, -- Maximum memory usage before triggering garbage collection
+    MaxMemUsage = 600, -- Maximum memory usage before triggering garbage collection
     drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
     drawCurrentNode = true, -- Draws the current node
@@ -32,9 +32,13 @@ local options = {
     SelfHealTreshold = 45, -- Health percentage to start looking for healthPacks
 }
 
+-- Initialize global memory usage variable
 local smoothFactor = 0.05
 local currentNodeIndex = 1
 local currentNodeTicks = 0
+local CurrentRoundState = 0
+local memUsage = collectgarbage("count")
+
 
 ---@type Vector3[]
 local healthPacks = {}
@@ -58,8 +62,8 @@ local WPlayer = lnxLib.TF2.WPlayer
 local function LoadNavFile()
     local mapFile = engine.GetMapName()
     local navFile = string.gsub(mapFile, ".bsp", ".nav")
-    --AStar.ResetCache()
     Navigation.LoadFile(navFile)
+    Navigation.ClearPath()
 end
 
 
@@ -106,28 +110,45 @@ local function Normalize(vec)
     return Vector3(vec.x / length, vec.y / length, vec.z / length)
 end
 
-local function L_line(start_pos, end_pos, secondary_line_size)
-    if not (start_pos and end_pos) then
-        return
+local function ArrowLine(start_pos, end_pos, arrowhead_length, arrowhead_width, invert)
+    if not (start_pos and end_pos) then return end
+
+    -- If invert is true, swap start_pos and end_pos
+    if invert then
+        start_pos, end_pos = end_pos, start_pos
     end
+
+    -- Calculate direction from start to end
     local direction = end_pos - start_pos
     local direction_length = direction:Length()
-    if direction_length == 0 then
-        return
-    end
+    if direction_length == 0 then return end
+
+    -- Normalize the direction vector
     local normalized_direction = Normalize(direction)
-    local perpendicular = Vector3(normalized_direction.y, -normalized_direction.x, 0) * secondary_line_size
-    local w2s_start_pos = client.WorldToScreen(start_pos)
-    local w2s_end_pos = client.WorldToScreen(end_pos)
-    if not (w2s_start_pos and w2s_end_pos) then
-        return
-    end
-    local secondary_line_end_pos = start_pos + perpendicular
-    local w2s_secondary_line_end_pos = client.WorldToScreen(secondary_line_end_pos)
-    if w2s_secondary_line_end_pos then
-        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_end_pos[1], w2s_end_pos[2])
-        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_secondary_line_end_pos[1], w2s_secondary_line_end_pos[2])
-    end
+
+    -- Calculate the arrow base position by moving back from end_pos in the direction of start_pos
+    local arrow_base = end_pos - normalized_direction * arrowhead_length
+
+    -- Calculate the perpendicular vector for the arrow width
+    local perpendicular = Vector3(-normalized_direction.y, normalized_direction.x, 0) * (arrowhead_width / 2)
+
+    -- Convert world positions to screen positions
+    local w2s_start, w2s_end = client.WorldToScreen(start_pos), client.WorldToScreen(end_pos)
+    local w2s_arrow_base = client.WorldToScreen(arrow_base)
+    local w2s_perp1 = client.WorldToScreen(arrow_base + perpendicular)
+    local w2s_perp2 = client.WorldToScreen(arrow_base - perpendicular)
+
+    if not (w2s_start and w2s_end and w2s_arrow_base and w2s_perp1 and w2s_perp2) then return end
+
+    -- Draw the line from start to the base of the arrow (not all the way to the end)
+    draw.Line(w2s_start[1], w2s_start[2], w2s_arrow_base[1], w2s_arrow_base[2])
+
+    -- Draw the sides of the arrowhead
+    draw.Line(w2s_end[1], w2s_end[2], w2s_perp1[1], w2s_perp1[2])
+    draw.Line(w2s_end[1], w2s_end[2], w2s_perp2[1], w2s_perp2[2])
+
+    -- Optionally, draw the base of the arrowhead to close it
+    draw.Line(w2s_perp1[1], w2s_perp1[2], w2s_perp2[1], w2s_perp2[2])
 end
 
 --[[ Callbacks ]]
@@ -145,7 +166,6 @@ local function OnDraw()
 
     -- Memory usage
     if options.memoryUsage then
-        local memUsage = collectgarbage("count")
         draw.Text(20, currentY, string.format("Memory usage: %.2f MB", memUsage / 1024))
         currentY = currentY + 20
     end
@@ -172,7 +192,7 @@ local function OnDraw()
             draw.FilledRect(x - 4, y - 4, x + 4, y + 4)  -- Draw a small square centered at (x, y)
 
             -- Node IDs
-            draw.Text(screenPos[1], screenPos[2] + 10, tostring(id))
+            draw.Text(screenPos[1], screenPos[2] - 10, tostring(id))
 
             ::continue::
         end
@@ -194,7 +214,7 @@ local function OnDraw()
             if not screenPos1 or not screenPos2 then goto continue end
 
             if node1Pos and node2Pos then
-                L_line(node1Pos, node2Pos, 22)  -- Adjust the size for the perpendicular segment as needed
+                ArrowLine(node1Pos, node2Pos, 22, 15, true)  -- Adjust the size for the perpendicular segment as needed
             end
             ::continue::
         end
@@ -203,7 +223,7 @@ local function OnDraw()
         local node1 = currentPath[#currentPath]
         if node1 then
             local node1 = Vector3(node1.x, node1.y, node1.z)
-            L_line(myPos, node1, 22)
+            ArrowLine(myPos, node1, 22, 15, false)
         end
     end
 
@@ -217,7 +237,7 @@ local function OnDraw()
         local screenPos = client.WorldToScreen(currentNodePos)
         if screenPos then
             Draw3DBox(20, currentNodePos)
-            draw.Text(screenPos[1], screenPos[2], tostring(currentNodeIndex))
+            draw.Text(screenPos[1], screenPos[2] + 40, tostring(currentNodeIndex))
         end
     end
 end
@@ -229,7 +249,7 @@ local function OnCreateMove(userCmd)
     if not options.autoPath then return end
 
     local me = entities.GetLocalPlayer()
-    if not me or not me:IsAlive() then
+    if not me or not me:IsAlive() and CurrentRoundState == 1 then
         Navigation.ClearPath()
         return
     end
@@ -239,7 +259,6 @@ local function OnCreateMove(userCmd)
         currentNodeTicks = 0
         return
     end
-
     --if not gamerules.IsMatchTypeCasual() then return end -- return if not in casual.
 
     -- emergency healthpack task
@@ -261,8 +280,9 @@ local function OnCreateMove(userCmd)
                 previousTask = nil
             end
         end
-        local memUsage2 = collectgarbage("count")
-        if memUsage2 / 1024 > options.MaxMemUsage then
+
+        memUsage = collectgarbage("count")
+        if memUsage / 1024 > options.MaxMemUsage then
             collectgarbage()
             collectgarbage()
             collectgarbage()
@@ -270,11 +290,11 @@ local function OnCreateMove(userCmd)
         end
     end
 
+    if currentTask == Tasks.None then return end --return if no task is set
+
     local flags = me:GetPropInt( "m_fFlags" );
     local myPos = me:GetAbsOrigin()
     local currentPath = Navigation.GetCurrentPath()
-
-    if currentTask == Tasks.None then return end
 
     if currentPath then
         -- Move along path
@@ -318,6 +338,13 @@ local function OnCreateMove(userCmd)
             -- Increment the current node ticks
             currentNodeTicks = currentNodeTicks + 1
 
+            -- Fix all nodes in currentPath
+            for i, node in ipairs(currentPath) do
+                if not node.fixed then
+                    Navigation.FixNode(node.id)
+                end
+            end
+
             -- Check if the next node is closer
             if currentNodeIndex > 1 then
                 local nextNode = currentPath[currentNodeIndex - 1]
@@ -338,21 +365,22 @@ local function OnCreateMove(userCmd)
                 end
             end
 
-            -- Once at the closest node, check for the furthest walkable node with smallest index
-            if currentNodeIndex > 1 then
+            --Once at the closest node, check for the furthest walkable node with smallest index
+            if currentNodeIndex > 1 and flags & FL_ONGROUND == 1 then
                 local furthestNodeIndex, furthestNode, furthestNodePos = Navigation.FindBestNode(currentPath, myPos, currentNodeIndex)
 
                 if furthestNodeIndex and furthestNodeIndex < currentNodeIndex then
-                    -- Furthest walkable node found, update current node and path
+                    -- Furthest walkable node found, update current nod`e and path
                     Log:Info(string.format("Skipping to furthest walkable node %d", furthestNodeIndex))
                     currentNodeIndex = furthestNodeIndex
                     currentNode = furthestNode
                     currentNodePos = furthestNodePos
-
-                    for i = #currentPath, currentNodeIndex + 1, -1 do
-                        table.remove(currentPath, i)
-                    end
                 end
+            end
+
+            -- Remove only the node at currentNodeIndex + 1
+            if currentPath[currentNodeIndex + 1] then
+                table.remove(currentPath, currentNodeIndex + 1)
             end
 
             -- Check if the path is completed
@@ -366,14 +394,15 @@ local function OnCreateMove(userCmd)
             end
         end
 
-        -- Repath if stuck
+    -- Repath if stuck
         local Flatdistance = math.abs(myPos.x - currentNodePos.x) + math.abs(myPos.y - currentNodePos.y)
-        if currentNodeTicks > 40 and me:EstimateAbsVelocity():Length() < 50 or currentNodeTicks > 40 and Flatdistance < nodeTouchDistance then
+
+        -- Jump if path is obstructed and velocity is less than 50
+        if me:EstimateAbsVelocity():Length() < 50 and currentNodeTicks > 40 or currentNodeTicks > 66 then
             local minVector = Vector3(-24, -24, 0)
             local maxVector = Vector3(24, 24, 82)
             local traceResult1 = engine.TraceHull(myPos, currentNodePos, minVector, maxVector, MASK_SHOT_HULL)
             if traceResult1.fraction < 0.9 then
-
                 -- Jump if stuck
                 if not me:InCond(TFCond_Zoomed) then
                     --basic autojump when on ground
@@ -384,24 +413,30 @@ local function OnCreateMove(userCmd)
                         userCmd:SetButtons(userCmd.buttons & (~IN_JUMP))
                     end
                 end
+            end
+        end
 
-                -- Path to the next node is blocked
-                Log:Warn("Path to node %d is blocked, removing connection and repathing...", currentNodeIndex)
-                -- Check that the current node and the next node exist in the path
-                if currentPath[currentNodeIndex] and currentPath[currentNodeIndex + 1] then
-                    -- Remove the connection between the current node and the next node
-                    Navigation.RemoveConnection(currentPath[currentNodeIndex], currentPath[currentNodeIndex + 1])
-                elseif currentPath[currentNodeIndex] and not currentPath[currentNodeIndex + 1] and currentNodeIndex > 1 then
-                    -- If there's no next node, but there is a previous node, remove connection between the previous and the current node
-                    Navigation.RemoveConnection(currentPath[currentNodeIndex - 1], currentPath[currentNodeIndex])
+        -- Remove path if stuck
+        if flags & FL_ONGROUND == 1 then --when on ground
+            if currentNodeTicks > 250 or currentNodeTicks > 22 and Flatdistance < nodeTouchDistance then
+                local minVector = Vector3(-24, -24, 0)
+                local maxVector = Vector3(24, 24, 82)
+                local traceResult1 = engine.TraceHull(myPos, currentNodePos, minVector, maxVector, MASK_SHOT_HULL)
+                if traceResult1.fraction < 0.9 then
+                    -- Path to the next node is blocked
+                    Log:Warn("Path to node %d is blocked, removing connection and repathing...", currentNodeIndex)
+                    -- Check that the current node and the next node exist in the path
+                    if currentPath[currentNodeIndex] and currentPath[currentNodeIndex + 1] then
+                        -- Remove the connection between the current node and the next node
+                        Navigation.RemoveConnection(currentPath[currentNodeIndex], currentPath[currentNodeIndex + 1])
+                    elseif currentPath[currentNodeIndex] and not currentPath[currentNodeIndex + 1] and currentNodeIndex > 1 then
+                        -- If there's no next node, but there is a previous node, remove connection between the previous and the current node
+                        Navigation.RemoveConnection(currentPath[currentNodeIndex - 1], currentPath[currentNodeIndex])
+                    end
+                else
+                    -- Clear the current path and recalculate
+                    Log:Warn("Path to node %d is stuck but not blocked, repathing...", currentNodeIndex)
                 end
-                -- Clear the current path and recalculate
-                Navigation.ClearPath()
-                currentNodeTicks = 0
-                -- Trigger repathing logic here if necessary (depends on the rest of your code)
-            else
-                -- Clear the current path and recalculate
-                Log:Warn("Path to node %d is stuck but not blocked, repathing...", currentNodeIndex)
                 Navigation.ClearPath()
                 currentNodeTicks = 0
             end
@@ -521,14 +556,16 @@ local function OnCreateMove(userCmd)
         -- Update the pathfinder
         if not Navigation.isSearching() then
             Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
+            -- Initialize the pathfinding
+            Navigation.FindPath(startNode, goalNode, options.MaxNodesPerTick)
         end
-        Navigation.FindPath(startNode, goalNode, options.MaxNodesPerTick)
 
-        local currentPath = Navigation.GetCurrentPath()
+        currentPath = Navigation.GetCurrentPath()
         if currentPath then
             currentNodeIndex = #currentPath
         elseif not Navigation.isSearching() then
             Log:Warn("Failed to find a path from node %d to node %d", startNode.id, goalNode.id)
+            LoadNavFile()
         end
     end
 end
@@ -574,10 +611,6 @@ end)
 
 -- credits: snipergaming888 (Sydney)
 
-local switch = 0;
-local switchmax = 1;
-
-
 local function newmap_eventNav(event)
     if event:GetName() == "game_newmap" then
         LoadNavFile()
@@ -585,21 +618,14 @@ local function newmap_eventNav(event)
 end
 
 local function Restart(event)
-
-    --[[local eventName = event:GetName()
-    Log:Info("Event occurred: " .. eventName)]] --debug
-
     if event:GetName() == "teamplay_round_start" then
-        switch = switch + 1;
-        LoadNavFile()
-            if switch == switchmax then 
-                switch = 0;
-            end
-            Log:Warn("path outdated repathing...", currentNodeIndex)
-            Navigation.ClearPath()
-            currentNodeTicks = 0
+        CurrentRoundState = 1 -- Players cannot move now
+        Log:Warn("path outdated repathing...", currentNodeIndex)
+        Navigation.ClearPath()
+        currentNodeTicks = 0
     end
     if event:GetName() == "teamplay_round_active" then
+        CurrentRoundState = 0 -- Players can move now
         Log:Warn("now players can move repathing...", currentNodeIndex)
         Navigation.ClearPath()
         currentNodeTicks = 0
