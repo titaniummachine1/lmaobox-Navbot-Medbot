@@ -352,24 +352,22 @@ local function OnCreateMove(userCmd)
             local objectives = nil
 
             -- map check
-            if engine.GetMapName():lower():find("pl_") then
-                -- pl
-                objectives = entities.FindByClass("CObjectCartDispenser")
-            elseif engine.GetMapName():lower():find("plr_") then
-                -- plr
+            local mapName = engine.GetMapName():lower()
+            if mapName:find("plr_") then
                 payloads = entities.FindByClass("CObjectCartDispenser")
-                if #payloads == 1 and payloads[1]:GetTeamNumber() ~= me:GetTeamNumber() then
-                    goalNode = Navigation.GetClosestNode(payloads[1]:GetAbsOrigin())
-                    Log:Info("Found payload1 at node %d", goalNode.id)
-                else
-                    for idx, entity in pairs(payloads) do
-                        if entity:GetTeamNumber() == me:GetTeamNumber() then
-                            goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
-                            Log:Info("Found payload at node %d", goalNode.id)
-                        end
+                for idx, entity in pairs(payloads) do
+                    if entity:GetTeamNumber() == me:GetTeamNumber() then
+                        goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
+                        Log:Info("Found payload at node %d", goalNode.id)
                     end
                 end
-            elseif engine.GetMapName():lower():find("ctf_") then
+            elseif mapName:find("pl_") then
+                payloads = entities.FindByClass("CObjectCartDispenser")
+                for idx, entity in pairs(payloads) do
+                    goalNode = Navigation.GetClosestNode(entity:GetAbsOrigin())
+                    Log:Info("Found payload at node %d", goalNode.id)
+                end            
+            elseif mapName:find("ctf_") then
                 -- ctf
                 local myItem = me:GetPropInt("m_hItem")
                 local flags = entities.FindByClass("CCaptureFlag")
@@ -383,29 +381,6 @@ local function OnCreateMove(userCmd)
                 end
             else
                 Log:Warn("Unsupported Gamemode, try CTF, PL, or PLR")
-                
-            end
-
-            -- Ensure objectives is a table before iterating
-            if objectives and type(objectives) ~= "table" then
-                Log:Info("No objectives available")
-                return
-            end
-
-            -- Iterate through objectives and find the closest one
-            if objectives then
-                local closestDist = math.huge
-                for idx, ent in pairs(objectives) do
-                    local dist = (myPos - ent:GetAbsOrigin()):Length()
-                    if dist < closestDist then
-                        closestDist = dist
-                        goalNode = Navigation.GetClosestNode(ent:GetAbsOrigin())
-                        entity = ent
-                        Log:Info("Found objective at node %d", goalNode.id)
-                    end
-                end
-            else
-                Log:Warn("No objectives found; iterate failure.")
             end
 
             -- Check if the distance between player and payload is greater than a threshold
