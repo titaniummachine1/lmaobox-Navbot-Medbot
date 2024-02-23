@@ -7,7 +7,7 @@ Support: https://dsc.gg/rosnehook
 
 Credits for original code: Inx00
 
-# How to LMAOBox-Navbot
+# How to use LMAOBox-Navbot
 
 First, go to releases and download the Lmaobot.lua script to your ``%localappdata%`` folder.
 
