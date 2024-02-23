@@ -1,28 +1,34 @@
 --[[
 	A-Star Algorithm for Lmaobox
 	Credits: github.com/GlorifiedPig/Luafinding
-	fixed by: titaniummachine1 (https://github.com/titaniummachine1)
 ]]
 
 local Heap = require("Lmaobot.Heap")
 
+---@alias PathNode { id : integer, x : number, y : number, z : number }
+
+---@class AStar
 local AStar = {}
 
--- Precompute adjacent nodes to reduce calculations in the main loop if possible.
-
 local function HeuristicCostEstimate(nodeA, nodeB)
-	return math.abs(nodeB.x - nodeA.x) + math.abs(nodeB.y - nodeA.y) + math.abs(nodeB.z - nodeA.z) -- Manhattan distance
+	return math.sqrt((nodeB.x - nodeA.x) ^ 2 + (nodeB.y - nodeA.y) ^ 2 + (nodeB.z - nodeA.z) ^ 2)
 end
 
 local function ReconstructPath(current, previous)
-	local path = {}
-	while current do
-		table.insert(path, current)
+	local path = { current }
+	while previous[current] do
 		current = previous[current]
+		table.insert(path, current)
 	end
-	return path  -- No need to reverse if you are ok with the path being from end to start
+
+	return path
 end
 
+---@param start PathNode
+---@param goal PathNode
+---@param nodes PathNode[]
+---@param adjacentFun fun(node : PathNode, nodes : PathNode[]) : PathNode[]
+---@return PathNode[]|nil
 function AStar.Path(start, goal, nodes, adjacentFun)
 	local openSet, closedSet = Heap.new(), {}
 	local gScore, fScore = {}, {}
@@ -34,27 +40,38 @@ function AStar.Path(start, goal, nodes, adjacentFun)
 
 	local previous = {}
 	while not openSet:empty() do
+		---@type PathNode
 		local current = openSet:pop()
+
 		if not closedSet[current] then
+
+			-- Found the goal
 			if current.id == goal.id then
 				openSet:clear()
 				return ReconstructPath(current, previous)
 			end
 
 			closedSet[current] = true
+
+			-- Traverse adjacent nodes
 			local adjacentNodes = adjacentFun(current, nodes)
-			for _, neighbor in ipairs(adjacentNodes) do
+			for i = 1, #adjacentNodes do
+				local neighbor = adjacentNodes[i]
 				if not closedSet[neighbor] then
 					local tentativeGScore = gScore[current] + HeuristicCostEstimate(current, neighbor)
-					if not gScore[neighbor] or tentativeGScore < gScore[neighbor] then
-						previous[neighbor], gScore[neighbor] = current, tentativeGScore
+
+					local neighborGScore = gScore[neighbor]
+					if not neighborGScore or tentativeGScore < neighborGScore then
+						gScore[neighbor] = tentativeGScore
 						fScore[neighbor] = tentativeGScore + HeuristicCostEstimate(neighbor, goal)
+						previous[neighbor] = current
 						openSet:push(neighbor)
 					end
 				end
 			end
 		end
 	end
+
 	return nil
 end
 
