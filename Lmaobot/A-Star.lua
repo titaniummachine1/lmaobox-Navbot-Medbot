@@ -10,18 +10,13 @@ local Heap = require("Lmaobot.Heap")
 ---@class AStar
 local AStar = {}
 
-local function HeuristicCostEstimate(nodeA, nodeB)
-	return math.sqrt((nodeB.x - nodeA.x) ^ 2 + (nodeB.y - nodeA.y) ^ 2 + (nodeB.z - nodeA.z) ^ 2)
+-- Calculates Manhattan Distance between two nodes
+local function ManhattanDistance(nodeA, nodeB)
+    return math.abs(nodeB.pos.x - nodeA.pos.x) + math.abs(nodeB.pos.y - nodeA.pos.y)
 end
 
-local function ReconstructPath(current, previous)
-	local path = { current }
-	while previous[current] do
-		current = previous[current]
-		table.insert(path, current)
-	end
-
-	return path
+local function HeuristicCostEstimate(nodeA, nodeB)
+    return ManhattanDistance(nodeA, nodeB)
 end
 
 ---@param start PathNode
@@ -30,49 +25,48 @@ end
 ---@param adjacentFun fun(node : PathNode, nodes : PathNode[]) : PathNode[]
 ---@return PathNode[]|nil
 function AStar.Path(start, goal, nodes, adjacentFun)
-	local openSet, closedSet = Heap.new(), {}
-	local gScore, fScore = {}, {}
-	gScore[start] = 0
-	fScore[start] = HeuristicCostEstimate(start, goal)
+    local openSet, closedSet = Heap.new(), {}
+    local gScore, fScore = {}, {}
+    gScore[start] = 0
+    fScore[start] = HeuristicCostEstimate(start, goal)
 
-	openSet.Compare = function(a, b) return fScore[a] < fScore[b] end
-	openSet:push(start)
+    openSet.Compare = function(a, b) return fScore[a.node] < fScore[b.node] end
+    openSet:push({node = start, path = {start}})
 
-	local previous = {}
-	while not openSet:empty() do
-		---@type PathNode
-		local current = openSet:pop()
+    while not openSet:empty() do
+        local currentData = openSet:pop()
+        local current = currentData.node
+        local currentPath = currentData.path
 
-		if not closedSet[current] then
+        if current.id == goal.id then
+            local reversedPath = {}
+            for i = #currentPath, 1, -1 do
+                table.insert(reversedPath, currentPath[i])
+            end
+            return reversedPath
+        end
 
-			-- Found the goal
-			if current.id == goal.id then
-				openSet:clear()
-				return ReconstructPath(current, previous)
-			end
+        closedSet[current] = true
 
-			closedSet[current] = true
+        local adjacentNodes = adjacentFun(current, nodes)
+        for _, neighbor in ipairs(adjacentNodes) do
+            if not closedSet[neighbor] then
+                local tentativeGScore = gScore[current] + HeuristicCostEstimate(current, neighbor)
 
-			-- Traverse adjacent nodes
-			local adjacentNodes = adjacentFun(current, nodes)
-			for i = 1, #adjacentNodes do
-				local neighbor = adjacentNodes[i]
-				if not closedSet[neighbor] then
-					local tentativeGScore = gScore[current] + HeuristicCostEstimate(current, neighbor)
+                if not gScore[neighbor] or tentativeGScore < gScore[neighbor] then
+                    gScore[neighbor] = tentativeGScore
+                    fScore[neighbor] = tentativeGScore + HeuristicCostEstimate(neighbor, goal)
 
-					local neighborGScore = gScore[neighbor]
-					if not neighborGScore or tentativeGScore < neighborGScore then
-						gScore[neighbor] = tentativeGScore
-						fScore[neighbor] = tentativeGScore + HeuristicCostEstimate(neighbor, goal)
-						previous[neighbor] = current
-						openSet:push(neighbor)
-					end
-				end
-			end
-		end
-	end
+                    local newPath = {table.unpack(currentPath)}
+                    table.insert(newPath, neighbor)
 
-	return nil
+                    openSet:push({node = neighbor, path = newPath})
+                end
+            end
+        end
+    end
+
+    return nil -- Path not found if loop exits
 end
 
 return AStar
