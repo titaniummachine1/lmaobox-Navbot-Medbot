@@ -5,6 +5,7 @@
 --[[ Imports ]]
 local Common = require("Lmaobot.Common")
 local Navigation = require("Lmaobot.Navigation")
+local TaskManager = require("Lmaobot.TaskManager")
 local Lib = Common.Lib
 ---@type boolean, lnxLib
 local libLoaded, lnxLib = pcall(require, "lnxLib")
@@ -12,7 +13,7 @@ local libLoaded, lnxLib = pcall(require, "lnxLib")
 -- Unload package for debugging
 Lib.Utils.UnloadPackages("Lmaobot")
 
-local Notify, FS, Fonts, Commands, Timer = Lib.UI.Notify, Lib.Utils.FileSystem, Lib.UI.Fonts, Lib.Utils.Commands, Lib.Utils.Timer
+local Notify, FS, Fonts, Commands = Lib.UI.Notify, Lib.Utils.FileSystem, Lib.UI.Fonts, Lib.Utils.Commands
 local Log = Lib.Utils.Logger.new("Lmaobot")
 Log.Level = 0
 
@@ -23,7 +24,7 @@ local options = {
     drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
     drawCurrentNode = false, -- Draws the current node
-    lookatpath = true, -- Look at where we are walking
+    lookatpath = false, -- Look at where we are walking
     smoothLookAtPath = true, -- Set this to true to enable smooth look at path
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
@@ -43,9 +44,8 @@ local Tasks = table.readOnly {
     Health = 2,
 }
 
-local jumptimer = 0;
+
 local currentTask = Tasks.Objective
-local taskTimer = Timer.new()
 local Math = lnxLib.Utils.Math
 local WPlayer = lnxLib.TF2.WPlayer
 
@@ -215,7 +215,42 @@ local function OnDraw()
     end
 end
 
+local function HealthLogic()
+    local me = entities.GetLocalPlayer()
+    if not me or not me:IsAlive() then
+        Navigation.ClearPath()
+        return
+    end
 
+    -- make sure we're not being healed by a medic before running health logic
+    if (me:GetHealth() / me:GetMaxHealth()) * 100 < options.SelfHealTreshold and not me:InCond(TFCond_Healing) then
+        if currentTask ~= Tasks.Health and options.shouldfindhealth then
+            Log:Info("Switching to health task")
+            Navigation.ClearPath()
+        end
+        currentTask = Tasks.Health
+    else
+        if currentTask ~= Tasks.Objective then
+            Log:Info("Switching to objective task")
+            Navigation.ClearPath()
+        end
+        currentTask = Tasks.Objective
+    end
+    return currentTask
+end
+
+local function handleMemoryUsage()
+    local memUsage2 = collectgarbage("count")
+    if memUsage2 / 1024 > 250 then
+        collectgarbage()
+        collectgarbage()
+        collectgarbage()
+
+        Log:Info("Trigger GC")
+    end
+end
+
+local jumptimer = 0;
 ---@param userCmd UserCmd
 local function OnCreateMove(userCmd)
     if not options.autoPath then return end
@@ -226,33 +261,8 @@ local function OnCreateMove(userCmd)
         return
     end
 
-    -- Update the current task
-    if taskTimer:Run(0.7) then
-        -- make sure we're not being healed by a medic before running health logic
-        if (me:GetHealth() / me:GetMaxHealth()) * 100 < options.SelfHealTreshold and not me:InCond(TFCond_Healing) then
-            if currentTask ~= Tasks.Health and options.shouldfindhealth then
-                Log:Info("Switching to health task")
-                Navigation.ClearPath()
-            end
-
-            currentTask = Tasks.Health
-        else
-            if currentTask ~= Tasks.Objective then
-                Log:Info("Switching to objective task")
-                Navigation.ClearPath()
-            end
-
-            currentTask = Tasks.Objective
-        end
-        local memUsage2 = collectgarbage("count")
-        if memUsage2 / 1024 > 250 then
-            collectgarbage()
-            collectgarbage()
-            collectgarbage()
-
-            Log:Info("Trigger GC")
-        end
-    end
+    TaskManager.addTask(HealthLogic, 33, "selfHeal")
+    TaskManager.addTask(handleMemoryUsage, 44, "MemoryUsage")
 
     local myPos = me:GetAbsOrigin()
     local currentPath = Navigation.GetCurrentPath()
