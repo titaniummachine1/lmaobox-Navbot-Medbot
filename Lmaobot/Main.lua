@@ -24,7 +24,7 @@ local options = {
     drawNodes = false, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
     drawCurrentNode = false, -- Draws the current node
-    lookatpath = false, -- Look at where we are walking
+    lookatpath = true, -- Look at where we are walking
     smoothLookAtPath = true, -- Set this to true to enable smooth look at path
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
@@ -296,7 +296,7 @@ local function OnCreateMove(userCmd)
                 while deltaAngles.y > 180 do deltaAngles.y = deltaAngles.y - 360 end
                 while deltaAngles.y < -180 do deltaAngles.y = deltaAngles.y + 360 end
 
-                angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.5, currentAngles.y + deltaAngles.y * smoothFactor, 0)
+                angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.05, currentAngles.y + deltaAngles.y * smoothFactor, 0)
             end
             --Credits to catt (pp021)
             engine.SetViewAngles(angles)
