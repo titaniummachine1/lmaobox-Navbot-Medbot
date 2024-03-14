@@ -322,31 +322,27 @@ end
 function Navigation.WalkTo(pCmd, pLocal, pDestination)
     local localPos = pLocal:GetAbsOrigin()
     local distVector = pDestination - localPos
-    local dist = math.abs(distVector.x) + math.abs(distVector.y)
+    local dist = math.sqrt(distVector.x^2 + distVector.y^2)
     local currentSpeed = Navigation.GetForwardSpeedByClass(pLocal)  -- Max speed for the class
     local currentVelocity = pLocal:EstimateAbsVelocity()
     local velocityDirection = Normalize(currentVelocity)
     local velocitySpeed = currentVelocity:Length()
+    --print(pLocal:GetPropFloat("m_flFriction"))
 
     -- Calculate distance that would be covered in one tick at the current speed
-    local distancePerTick = currentSpeed / TICK_RATE
+    local distancePerTick = math.max(10, math.min(currentSpeed / TICK_RATE, 450))
 
     -- Check if we are close enough to potentially overshoot the target in the next tick
     if dist > distancePerTick then
         -- If we are not close enough to overshoot, proceed at max speed
         local result = ComputeMove(pCmd, localPos, pDestination)
-        pCmd:SetForwardMove(result.x * currentSpeed)
-        pCmd:SetSideMove(result.y * currentSpeed)
+        pCmd:SetForwardMove(result.x)
+        pCmd:SetSideMove(result.y)
     else
-        -- Calculate the required deceleration per tick to stop at the target
-        local decelPerTick = (velocitySpeed * velocitySpeed) / (2 * dist * TICK_RATE)
-        local requiredSpeed = velocitySpeed - decelPerTick
-        requiredSpeed = math.max(requiredSpeed, 0)  -- Ensure speed doesn't go below 0
-
-        -- Apply the calculated speed in the direction of the target
         local result = ComputeMove(pCmd, localPos, pDestination)
-        pCmd:SetForwardMove(result.x * requiredSpeed)
-        pCmd:SetSideMove(result.y * requiredSpeed)
+        local scaleFactor = dist / 1000
+        pCmd:SetForwardMove(result.x * scaleFactor)
+        pCmd:SetSideMove(result.y * scaleFactor)
     end
 end
 
