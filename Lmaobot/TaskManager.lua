@@ -2,6 +2,11 @@ local TaskManager = {}
 TaskManager.tasks = {}
 TaskManager.sortedIdentifiers = {}
 
+--- Adds a task to the TaskManager
+--- @param func function The function to be executed
+--- @param args table The arguments to pass to the function
+--- @param delay number The delay (in ticks) before the function should be executed
+--- @param identifier string A unique identifier for the task
 function TaskManager.addTask(func, args, delay, identifier)
     local currentTime = globals.TickCount()
     args = args or {}
@@ -24,10 +29,6 @@ function TaskManager.addTask(func, args, delay, identifier)
         }
         -- Insert identifier and sort tasks based on their delay, in descending order
         table.insert(TaskManager.sortedIdentifiers, identifier)
-        table.sort(TaskManager.sortedIdentifiers, function(a, b)
-            return TaskManager.tasks[a].delay > TaskManager.tasks[b].delay
-        end)
-    end
 end
 
 function TaskManager.TickUpdate()
