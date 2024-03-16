@@ -29,6 +29,10 @@ function TaskManager.addTask(func, args, delay, identifier)
         }
         -- Insert identifier and sort tasks based on their delay, in descending order
         table.insert(TaskManager.sortedIdentifiers, identifier)
+        table.sort(TaskManager.sortedIdentifiers, function(a, b)
+            return TaskManager.tasks[a].delay > TaskManager.tasks[b].delay
+        end)
+    end
 end
 
 function TaskManager.TickUpdate()
