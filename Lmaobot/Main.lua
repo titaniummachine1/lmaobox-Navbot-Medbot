@@ -17,6 +17,7 @@ local Log = Lib.Utils.Logger.new("Lmaobot")
 Log.Level = 0
 
 --[[ Variables ]]
+collectgarbage()
 
 local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
@@ -32,7 +33,7 @@ local options = {
     SelfHealTreshold = 45, -- Health percentage to start looking for healthPacks
 }
 
--- Initialize global memory usage variable
+
 local smoothFactor = 0.05
 local currentNodeIndex = 1
 local currentNodeTicks = 0
@@ -151,6 +152,74 @@ local function ArrowLine(start_pos, end_pos, arrowhead_length, arrowhead_width, 
     draw.Line(w2s_perp1[1], w2s_perp1[2], w2s_perp2[1], w2s_perp2[2])
 end
 
+
+local function Draw3DBox(size, pos)
+    local halfSize = size / 2
+    if not corners then
+        corners1 = {
+            Vector3(-halfSize, -halfSize, -halfSize),
+            Vector3(halfSize, -halfSize, -halfSize),
+            Vector3(halfSize, halfSize, -halfSize),
+            Vector3(-halfSize, halfSize, -halfSize),
+            Vector3(-halfSize, -halfSize, halfSize),
+            Vector3(halfSize, -halfSize, halfSize),
+            Vector3(halfSize, halfSize, halfSize),
+            Vector3(-halfSize, halfSize, halfSize)
+        }
+    end
+
+    local linesToDraw = {
+        {1, 2}, {2, 3}, {3, 4}, {4, 1},
+        {5, 6}, {6, 7}, {7, 8}, {8, 5},
+        {1, 5}, {2, 6}, {3, 7}, {4, 8}
+    }
+
+    local screenPositions = {}
+    for _, cornerPos in ipairs(corners1) do
+        local worldPos = pos + cornerPos
+        local screenPos = client.WorldToScreen(worldPos)
+        if screenPos then
+            table.insert(screenPositions, { x = screenPos[1], y = screenPos[2] })
+        end
+    end
+
+    for _, line in ipairs(linesToDraw) do
+        local p1, p2 = screenPositions[line[1]], screenPositions[line[2]]
+        if p1 and p2 then
+            draw.Line(p1.x, p1.y, p2.x, p2.y)
+        end
+    end
+end
+
+local function Normalize(vec)
+    local length = math.sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z)
+    return Vector3(vec.x / length, vec.y / length, vec.z / length)
+end
+
+local function L_line(start_pos, end_pos, secondary_line_size)
+    if not (start_pos and end_pos) then
+        return
+    end
+    local direction = end_pos - start_pos
+    local direction_length = direction:Length()
+    if direction_length == 0 then
+        return
+    end
+    local normalized_direction = Normalize(direction)
+    local perpendicular = Vector3(normalized_direction.y, -normalized_direction.x, 0) * secondary_line_size
+    local w2s_start_pos = client.WorldToScreen(start_pos)
+    local w2s_end_pos = client.WorldToScreen(end_pos)
+    if not (w2s_start_pos and w2s_end_pos) then
+        return
+    end
+    local secondary_line_end_pos = start_pos + perpendicular
+    local w2s_secondary_line_end_pos = client.WorldToScreen(secondary_line_end_pos)
+    if w2s_secondary_line_end_pos then
+        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_end_pos[1], w2s_end_pos[2])
+        draw.Line(w2s_start_pos[1], w2s_start_pos[2], w2s_secondary_line_end_pos[1], w2s_secondary_line_end_pos[2])
+    end
+end
+
 --[[ Callbacks ]]
 
 local function OnDraw()
@@ -202,7 +271,8 @@ local function OnDraw()
     if options.drawPath and currentPath then
         draw.Color(255, 255, 255, 255)
 
-        for i = 1, #currentPath - 1 do
+        -- Iterate over all nodes in the path, excluding the last two nodes
+        for i = 1, #currentPath - 2 do
             local node1 = currentPath[i]
             local node2 = currentPath[i + 1]
 
@@ -244,13 +314,16 @@ end
 
 local nodeTouchDistance = 27
 
+
 ---@param userCmd UserCmd
 local function OnCreateMove(userCmd)
     if not options.autoPath then return end
 
     local me = entities.GetLocalPlayer()
+
     if not me or not me:IsAlive() and CurrentRoundState == 1 then
         Navigation.ClearPath()
+
         return
     end
 
@@ -265,6 +338,7 @@ local function OnCreateMove(userCmd)
     if taskTimer:Run(1) then
         -- make sure we're not being healed by a medic before running health logic
         if (me:GetHealth() / me:GetMaxHealth()) * 100 < options.SelfHealTreshold and not me:InCond(TFCond_Healing) then
+
             if currentTask ~= Tasks.Health and options.shouldfindhealth then
                 Log:Info("Switching to health task")
                 Navigation.ClearPath()
@@ -298,6 +372,12 @@ local function OnCreateMove(userCmd)
 
     if currentPath then
         -- Move along path
+        if userCmd:GetForwardMove() ~= 0 or userCmd:GetSideMove() ~= 0 then
+            Navigation.ClearPath()
+            currentNodeTicks = 0
+            return
+        end
+
         local currentNode = currentPath[currentNodeIndex]
         local currentNodePos = currentNode.pos
 
@@ -323,9 +403,33 @@ local function OnCreateMove(userCmd)
             end
         end
 
+        if options.lookatpath then
+            if currentNodePos == nil then
+                return
+            else
+                local melnx = WPlayer.GetLocal()
+                local angles = Lib.Utils.Math.PositionAngles(melnx:GetEyePos(), currentNodePos)
+                angles.x = 0
+    
+                if options.smoothLookAtPath then
+                    local currentAngles = userCmd.viewangles
+                    local deltaAngles = {x = angles.x - currentAngles.x, y = angles.y - currentAngles.y}
+
+                    deltaAngles.y = math.fmod(deltaAngles.y + 180, 360) - 180
+
+                    angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.5, currentAngles.y + deltaAngles.y * smoothFactor, 0)
+                end
+    
+                engine.SetViewAngles(angles)
+            end
+        end
+
         local dist = (myPos - currentNodePos):Length()
         if dist < nodeTouchDistance then
             currentNodeTicks = 0
+            for i = #currentPath, currentNodeIndex + 1, -1 do
+                table.remove(currentPath, i)
+            end
             currentNodeIndex = currentNodeIndex - 1
             table.remove(currentPath)
 
@@ -337,6 +441,7 @@ local function OnCreateMove(userCmd)
         else
             -- Increment the current node ticks
             currentNodeTicks = currentNodeTicks + 1
+
 
             -- Fix all nodes in currentPath
             for i, node in ipairs(currentPath) do
@@ -363,6 +468,29 @@ local function OnCreateMove(userCmd)
                         table.remove(currentPath, i)
                     end
                 end
+
+                local node = currentPath[i]
+                local nodePos = Vector3(node.x, node.y, node.z)
+                local nodeDist = (myPos - nodePos):Length()
+
+                -- If this node is closer, update closest node variables
+                if nodeDist < closestDist then
+                    closestNodeIndex = i
+                    closestNode = node
+                    closestNodePos = nodePos
+                    closestDist = nodeDist
+                end
+
+                ::continue::
+            end
+
+            -- If the closest node is not the current node, skip to it
+            if closestNodeIndex ~= currentNodeIndex then
+                Log:Info("Skipping to closer node %d", closestNodeIndex)
+                currentNodeIndex = closestNodeIndex
+                currentNode = closestNode
+                currentNodePos = closestNodePos
+                dist = closestDist
             end
 
             --Once at the closest node, check for the furthest walkable node with smallest index
@@ -437,6 +565,10 @@ local function OnCreateMove(userCmd)
                     -- Clear the current path and recalculate
                     Log:Warn("Path to node %d is stuck but not blocked, repathing...", currentNodeIndex)
                 end
+                Navigation.ClearPath()
+                currentNodeTicks = 0
+            else
+                Log:Warn("Path to node %d is blocked, repathing...", currentNodeIndex)
                 Navigation.ClearPath()
                 currentNodeTicks = 0
             end
