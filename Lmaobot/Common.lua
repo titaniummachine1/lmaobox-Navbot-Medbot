@@ -9,4 +9,8 @@ Common.Lib = Lib
 
 Common.Log = Lib.Utils.Logger.new("Lmaobot")
 
+local IsWalkable = require("Lmaobot.Modules.IsWalkable")
+
+Common.IsWalkable = IsWalkable.Path
+
 return Common
