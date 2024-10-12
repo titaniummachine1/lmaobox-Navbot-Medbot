@@ -17,10 +17,11 @@ local Log = Lib.Utils.Logger.new("Lmaobot")
 Log.Level = 0
 
 --[[ Variables ]]
+collectgarbage()
 
 local options = {
     memoryUsage = true, -- Shows memory usage in the top left corner
-    drawNodes = false, -- Draws all nodes on the map
+    drawNodes = true, -- Draws all nodes on the map
     drawPath = true, -- Draws the path to the current goal
     drawCurrentNode = true, -- Draws the current node
     lookatpath = false, -- Look at where we are walking
@@ -28,6 +29,7 @@ local options = {
     autoPath = true, -- Automatically walks to the goal
     shouldfindhealth = true, -- Path to health
     SelfHealTreshold = 45, -- Health percentage to start looking for healthPacks
+
 }
 
 local smoothFactor = 0.05
@@ -180,7 +182,8 @@ local function OnDraw()
     if options.drawPath and currentPath then
         draw.Color(255, 255, 255, 255)
 
-        for i = 1, #currentPath - 1 do
+        -- Iterate over all nodes in the path, excluding the last two nodes
+        for i = 1, #currentPath - 2 do
             local node1 = currentPath[i]
             local node2 = currentPath[i + 1]
 
@@ -220,14 +223,17 @@ local function OnDraw()
     end
 end
 
-
 ---@param userCmd UserCmd
 local function OnCreateMove(userCmd)
     if not options.autoPath then return end
 
     local me = entities.GetLocalPlayer()
     if not me or not me:IsAlive() then
-        Navigation.ClearPath()
+        movementChangeTimer = movementChangeTimer - 1
+        if movementChangeTimer < 1 then
+            Navigation.ClearPath()
+            movementChangeTimer = 66
+        end
         return
     end
 
@@ -296,13 +302,33 @@ local function OnCreateMove(userCmd)
             end
         end
 
+        if options.lookatpath then
+            if currentNodePos == nil then
+                return
+            else
+                local melnx = WPlayer.GetLocal()
+                local angles = Lib.Utils.Math.PositionAngles(melnx:GetEyePos(), currentNodePos)
+                angles.x = 0
+    
+                if options.smoothLookAtPath then
+                    local currentAngles = userCmd.viewangles
+                    local deltaAngles = {x = angles.x - currentAngles.x, y = angles.y - currentAngles.y}
+
+                    deltaAngles.y = math.fmod(deltaAngles.y + 180, 360) - 180
+
+                    angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.5, currentAngles.y + deltaAngles.y * smoothFactor, 0)
+                end
+    
+                engine.SetViewAngles(angles)
+            end
+        end
+
         local dist = (myPos - currentNodePos):Length()
         if dist < 27 then
             currentNodeTicks = 0
             for i = #currentPath, currentNodeIndex + 1, -1 do
                 table.remove(currentPath, i)
             end
-
             currentNodeIndex = currentNodeIndex - 1
             if currentNodeIndex < 1 then
                 Navigation.ClearPath()
@@ -331,6 +357,29 @@ local function OnCreateMove(userCmd)
                         table.remove(currentPath, i)
                     end
                 end
+
+                local node = currentPath[i]
+                local nodePos = Vector3(node.x, node.y, node.z)
+                local nodeDist = (myPos - nodePos):Length()
+
+                -- If this node is closer, update closest node variables
+                if nodeDist < closestDist then
+                    closestNodeIndex = i
+                    closestNode = node
+                    closestNodePos = nodePos
+                    closestDist = nodeDist
+                end
+
+                ::continue::
+            end
+
+            -- If the closest node is not the current node, skip to it
+            if closestNodeIndex ~= currentNodeIndex then
+                Log:Info("Skipping to closer node %d", closestNodeIndex)
+                currentNodeIndex = closestNodeIndex
+                currentNode = closestNode
+                currentNodePos = closestNodePos
+                dist = closestDist
             end
 
             -- Once at the closest node, check for the furthest walkable node with smallest index
@@ -396,6 +445,10 @@ local function OnCreateMove(userCmd)
             else
                 -- Clear the current path and recalculate
                 Log:Warn("Path to node %d is stuck but not blocked, repathing...", currentNodeIndex)
+                Navigation.ClearPath()
+                currentNodeTicks = 0
+            else
+                Log:Warn("Path to node %d is blocked, repathing...", currentNodeIndex)
                 Navigation.ClearPath()
                 currentNodeTicks = 0
             end
