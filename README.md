@@ -10,12 +10,14 @@ First, go to https://nodejs.org/ and download and install the stable version of 
 
 Next, go to releases and download the source code (zip) and unzip it to any place you want.
 
-After that, you open the Node.JS command prompt and execute
+After that, you open the **Node.JS command prompt** and execute
 ```
 npm install luabundle
 ```
 
 Once it has installed, run Bundle.bat and after it finishes run BundleAndDeploy.bat
+
+When those batch scripts have finished, run MakeNavs.bat to get nav meshes for all causal maps
 
 Start TF2, inject LMAOBox (not beta build), and go into a map.
 
