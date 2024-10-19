@@ -30,8 +30,7 @@ function Common.horizontal_manhattan_distance(pos1, pos2)
 end
 
 function Common.Normalize(vec)
-    local length = vec:Length()
-    return Vector3(vec.x / length, vec.y / length, vec.z / length)
+    return vec / vec:Length()
 end
 
 function Common.AddCurrentTask(taskKey)

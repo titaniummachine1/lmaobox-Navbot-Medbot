@@ -20,6 +20,8 @@ local Setup = require("Lmaobot.Modules.Setup")
 require("Lmaobot.Visuals")
 require("Lmaobot.Menu")
 require("Lmaobot.Utils.Commands")
+require("Lmaobot.Modules.SmartJump")
+
 
 local Lib = Common.Lib
 local Log = Common.Log
@@ -124,7 +126,6 @@ local function OnCreateMove(userCmd)
             -- Move to the next node when close enough
             Navigation.MoveToNextNode()  -- Will remove the last node in the path
             Navigation.ResetTickTimer()
-
             -- Check if the path is empty after removing the node
             if not G.Navigation.path or #G.Navigation.path == 0 then
                 Navigation.ClearPath()
@@ -159,15 +160,10 @@ local function OnCreateMove(userCmd)
                             else
                                 Log:Warn("Path between current node %d and next node %d is not walkable, not skipping.", currentNode.id, nextNode.id)
                             end
-                        else
-                            -- Continue moving towards the current node
-                            Log:Info("Moving towards current node %d", currentNode.id)
                         end
                     else
                         Log:Warn("One or both nodes are nil, stopping skip logic.")
                     end
-                else
-                    Log:Warn("Not enough nodes in path to skip.")
                 end
             end
 
