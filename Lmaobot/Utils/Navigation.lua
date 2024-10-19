@@ -415,7 +415,7 @@ local function GetAdjacentNodes(node, nodes)
                         print(string.format("Error: Node %d has invalid corners (NW or SE) in direction %d.", conNode.id, dir))
                     else
                         -- Horizontal check
-                        local horizontalCheck = (conNode.pos - node.pos):Length2D() < 750
+                        local horizontalCheck = (conNode.pos - node.pos):Length() < 750
 
                         -- Adjust vertical check logic
                         local verticalDiff = conNode.pos.z - node.pos.z
