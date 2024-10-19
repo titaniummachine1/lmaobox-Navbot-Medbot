@@ -406,7 +406,7 @@ local function GetAdjacentNodes(node, nodes)
                 if not conNode then
                     print(string.format("Warning: Connection ID %d in direction %d of node %d does not have a valid node.", con, dir, node.id))
                 else
-                    -- Calculate horizontal and vertical checks
+                    -- Calculate horizontal checks
                     local conNodeNW = conNode.nw
                     local conNodeSE = conNode.se
 
@@ -414,16 +414,22 @@ local function GetAdjacentNodes(node, nodes)
                     if not conNodeNW or not conNodeSE then
                         print(string.format("Error: Node %d has invalid corners (NW or SE) in direction %d.", conNode.id, dir))
                     else
-                        -- Horizontal check (no change)
+                        -- Horizontal check
                         local horizontalCheck = ((conNodeNW.x - node.se.x) * (node.nw.x - conNodeSE.x) *
                                                  (conNodeNW.y - node.se.y) * (node.nw.y - conNodeSE.y)) <= 0 and 1 or 0
 
-                        -- Adjust the vertical check logic
+                        -- Adjust vertical check logic
                         local verticalDiff = conNode.pos.z - node.pos.z
 
-                        -- If both horizontal and vertical checks are valid, do a trace down check
-                        if horizontalCheck == 1 then
+                        -- Ensure vertical movement is allowed:
+                        -- - Only go up if the vertical difference is <= 72 units.
+                        -- - Always allow going down, so verticalDiff < 0 is valid.
+                        if horizontalCheck == 1 and (verticalDiff <= 72 or verticalDiff < 0) then
                             table.insert(adjacentNodes, conNode)
+                        else
+                            if verticalDiff > 72 then
+                                print(string.format("Node %d is too high to reach from node %d (vertical difference: %d units).", conNode.id, node.id, verticalDiff))
+                            end
                         end
                     end
                 end
@@ -433,6 +439,7 @@ local function GetAdjacentNodes(node, nodes)
 
     return adjacentNodes
 end
+
 
 
 
