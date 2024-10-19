@@ -124,7 +124,7 @@ local function OnCreateMove(userCmd)
             -- Move to the next node when close enough
             Navigation.MoveToNextNode()  -- Will remove the last node in the path
             Navigation.ResetTickTimer()
-        
+
             -- Check if the path is empty after removing the node
             if not G.Navigation.path or #G.Navigation.path == 0 then
                 Navigation.ClearPath()
@@ -137,18 +137,18 @@ local function OnCreateMove(userCmd)
             if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(2, "node skip") then
                 local path = G.Navigation.path
                 local pathLength = #path
-        
+
                 -- Ensure there are at least two nodes in the path to perform skipping
                 if pathLength >= 2 then
                     local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
                     local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
-        
+
                     -- Ensure currentNode and nextNode are valid
                     if currentNode and nextNode then
                         -- Get the distances: (1) currentNode to nextNode, and (2) player to nextNode
                         local currentToNextDist = (currentNode.pos - nextNode.pos):Length()
                         local playerToNextDist = (LocalOrigin - nextNode.pos):Length()
-        
+
                         -- Perform a trace check (line-of-sight) to ensure there's no obstacle between the player and the next node
                         if playerToNextDist < currentToNextDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
                             -- Additionally, check if the path between the current node and the next node is walkable
@@ -170,11 +170,11 @@ local function OnCreateMove(userCmd)
                     Log:Warn("Not enough nodes in path to skip.")
                 end
             end
-        
+
             -- Increment movement timer for the current node
             G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
         end
-        
+
 
         if (G.pLocal.flags & FL_ONGROUND == 1) or (pLocal:EstimateAbsVelocity():Length() < 50) then
             -- If bot is on the ground or moving very slowly, attempt to get unstuck
@@ -195,8 +195,7 @@ local function OnCreateMove(userCmd)
                     Log:Warn("Path to node %d is blocked or unreachable, removing connection and repathing...", currentIndex or -1)
                     if G.Navigation.path and currentIndex then
                         -- Remove the connection between the current node and the previous node
-                        Navigation.RemoveConnection(G.Navigation.path[currentIndex], G.Navigation.path[currentIndex - 1])
-        
+
                         -- Clear the current path and reset timers to find a new path
                         Navigation.ClearPath()
                         Navigation.ResetTickTimer()
