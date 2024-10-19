@@ -149,11 +149,16 @@ local function OnCreateMove(userCmd)
                         local currentToNextDist = (currentNode.pos - nextNode.pos):Length()
                         local playerToNextDist = (LocalOrigin - nextNode.pos):Length()
         
-                        -- If the player is closer to the next node than the current node is, skip to the next node
-                        if playerToNextDist < currentToNextDist then
-                            Log:Info("Player is closer to the next node. Skipping current node %d and moving to next node %d", currentNode.id, nextNode.id)
-                            Navigation.MoveToNextNode()  -- Skip to the next node
-                            Navigation.ResetTickTimer()
+                        -- Perform a trace check (line-of-sight) to ensure there's no obstacle between the player and the next node
+                        if playerToNextDist < currentToNextDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
+                            -- Additionally, check if the path between the current node and the next node is walkable
+                            if Common.isWalkable(currentNode.pos, nextNode.pos) then
+                                Log:Info("Player is closer to the next node and path is clear. Skipping current node %d and moving to next node %d", currentNode.id, nextNode.id)
+                                Navigation.MoveToNextNode()  -- Skip to the next node
+                                Navigation.ResetTickTimer()
+                            else
+                                Log:Warn("Path between current node %d and next node %d is not walkable, not skipping.", currentNode.id, nextNode.id)
+                            end
                         else
                             -- Continue moving towards the current node
                             Log:Info("Moving towards current node %d", currentNode.id)
@@ -169,6 +174,7 @@ local function OnCreateMove(userCmd)
             -- Increment movement timer for the current node
             G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
         end
+        
 
         if (G.pLocal.flags & FL_ONGROUND == 1) or (pLocal:EstimateAbsVelocity():Length() < 50) then
             -- If bot is on the ground or moving very slowly, attempt to get unstuck

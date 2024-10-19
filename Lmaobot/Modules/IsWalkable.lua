@@ -24,9 +24,6 @@ local UP_VECTOR = Vector3(0, 0, 1)
 local MIN_STEP_SIZE = MaxSpeed * globals.TickInterval() -- Minimum step size to consider for ground checks
 local MAX_SURFACE_ANGLE = 45       -- Maximum angle for ground surfaces
 
--- Traces tables for debugging
-local hullTraces = {}
-
 -- Helper Functions
 local function shouldHitEntity(entity)
     return entity ~= pLocal -- Ignore self (the player being simulated)
@@ -44,9 +41,7 @@ end
 
 -- Perform a hull trace to check for obstructions between two points
 local function performTraceHull(startPos, endPos)
-    local result = engine.TraceHull(startPos, endPos, PLAYER_HULL.Min, PLAYER_HULL.Max, MASK_PLAYERSOLID, shouldHitEntity)
-    table.insert(hullTraces, {startPos = startPos, endPos = result.endpos})
-    return result
+    return engine.TraceHull(startPos, endPos, PLAYER_HULL.Min, PLAYER_HULL.Max, MASK_PLAYERSOLID, shouldHitEntity)
 end
 
 -- Adjust the direction vector to align with the surface normal
@@ -72,7 +67,6 @@ end
 function IsWalkable.Path(startPos, goalPos)
     -- Clear trace tables for debugging
     hullTraces = {}
-    lineTraces = {}
     local blocked = false
 
     -- Initialize variables

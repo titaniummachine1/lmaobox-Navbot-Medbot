@@ -426,10 +426,6 @@ local function GetAdjacentNodes(node, nodes)
                         -- - Always allow going down, so verticalDiff < 0 is valid.
                         if horizontalCheck == 1 and (verticalDiff <= 72 or verticalDiff < 0) then
                             table.insert(adjacentNodes, conNode)
-                        else
-                            if verticalDiff > 72 then
-                                print(string.format("Node %d is too high to reach from node %d (vertical difference: %d units).", conNode.id, node.id, verticalDiff))
-                            end
                         end
                     end
                 end
