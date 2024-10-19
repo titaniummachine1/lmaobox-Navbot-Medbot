@@ -187,9 +187,9 @@ local function OnCreateMove(userCmd)
                     Log:Info("Attempting to jump to get unstuck.")
                 end
             end
-        
+
             -- If still stuck after multiple attempts, remove the connection and re-path
-            if G.Navigation.currentNodeTicks > 264 then
+            if G.Navigation.currentNodeTicks > 264 then -- 264 ticks = 4 seconds
                 if not Common.isWalkable(LocalOrigin, nodePos) then
                     local currentIndex = G.Navigation.currentNodeinPath
                     Log:Warn("Path to node %d is blocked or unreachable, removing connection and repathing...", currentIndex or -1)
