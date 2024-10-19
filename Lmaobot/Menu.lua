@@ -114,7 +114,7 @@ local function OnDrawMenu()
         -- Handle Main tab options
         if Tabs.Main then
             ImMenu.BeginFrame(1)
-                G.Menu.Main.Walking = ImMenu.Checkbox("Walking", G.Menu.Main.Enable)
+                G.Menu.Main.Walking = ImMenu.Checkbox("Walking", G.Menu.Main.Walking)
             ImMenu.EndFrame()
 
             ImMenu.BeginFrame(1)
