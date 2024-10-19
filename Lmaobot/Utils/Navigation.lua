@@ -441,10 +441,6 @@ local function GetAdjacentNodes(node, nodes)
 end
 
 
-
-
-
-
 function Navigation.FindPath(startNode, goalNode)
     if not startNode or not startNode.pos then
         Log:Warn("Navigation.FindPath: startNode or startNode.pos is nil")
