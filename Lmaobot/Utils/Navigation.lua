@@ -403,15 +403,39 @@ local function GetAdjacentNodes(node, nodes)
                 local conNode = nodes[con]
 
                 -- Check if the connected node exists in the node table
-                if conNode then
-                    -- Use simple vertical check (z-axis) like the original version
-                    if node.pos.z + 70 > conNode.pos.z then
-                        table.insert(adjacentNodes, conNode)
-                    else
-                        print(string.format("Node %d failed vertical check with connected node %d.", node.id, conNode.id))
-                    end
-                else
+                if not conNode then
                     print(string.format("Warning: Connection ID %d in direction %d of node %d does not have a valid node.", con, dir, node.id))
+                else
+                    -- Calculate horizontal and vertical checks
+                    local conNodeNW = conNode.nw
+                    local conNodeSE = conNode.se
+
+                    -- Ensure corners are valid for the node
+                    if not conNodeNW or not conNodeSE then
+                        print(string.format("Error: Node %d has invalid corners (NW or SE) in direction %d.", conNode.id, dir))
+                    else
+                        -- Horizontal check (no change)
+                        local horizontalCheck = ((conNodeNW.x - node.se.x) * (node.nw.x - conNodeSE.x) *
+                                                 (conNodeNW.y - node.se.y) * (node.nw.y - conNodeSE.y)) <= 0 and 1 or 0
+
+                        -- Adjust the vertical check logic
+                        local verticalDiff = conNode.pos.z - node.pos.z
+                        local verticalCheck = math.abs(verticalDiff) <= 72 and 1 or 0  -- 72 unit jump threshold
+
+                        -- If both horizontal and vertical checks are valid, do a trace down check
+                        if horizontalCheck == 1 and verticalCheck == 1 then
+                            table.insert(adjacentNodes, conNode)
+                        else
+                            -- Debug info for failed vertical check
+                            if verticalCheck == 0 then
+                                print(string.format("Node %d failed vertical check with connected node %d. Vertical diff: %d units.", node.id, conNode.id, verticalDiff))
+                            end
+                            -- Debug info for failed horizontal check
+                            if horizontalCheck == 0 then
+                                print(string.format("Node %d failed horizontal check with connected node %d.", node.id, conNode.id))
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -419,6 +443,7 @@ local function GetAdjacentNodes(node, nodes)
 
     return adjacentNodes
 end
+
 
 
 
