@@ -56,7 +56,7 @@ function Navigation.RemoveConnection(nodeA, nodeB)
     end
 end
 
--- Perform a trace hull down from the given position to the ground
+--[[-- Perform a trace hull down from the given position to the ground
 ---@param position Vector3 The start position of the trace
 ---@param hullSize table The size of the hull
 ---@return Vector3 The normal of the ground at that point
@@ -130,23 +130,23 @@ function Navigation.FixNode(nodeId)
         max = Vector3(math.min(math.abs(raisedNWPos.x - raisedSEPos.x) / 2, HULL_MAX.x), math.min(math.abs(raisedNWPos.y - raisedSEPos.y) / 2, HULL_MAX.y), 45)
     }
 
-    local groundNormal = traceHullDown(middlePos, traceHullSize)
+   --local groundNormal = traceHullDown(middlePos, traceHullSize)
 
     -- Step 4: Calculate the remaining corners based on the ground normal
-    local height = math.abs(node.nw.y - node.se.y)
-    local remainingCorners = calculateRemainingCorners(raisedNWPos, raisedSEPos, groundNormal, height)
+    --local height = math.abs(node.nw.y - node.se.y)
+    --local remainingCorners = calculateRemainingCorners(raisedNWPos, raisedSEPos, groundNormal, height)
 
     -- Step 5: Adjust corners to align with the ground normal
     raisedNWPos = traceLineDown(raisedNWPos)
     raisedSEPos = traceLineDown(raisedSEPos)
-    remainingCorners[1] = traceLineDown(remainingCorners[1])
-    remainingCorners[2] = traceLineDown(remainingCorners[2])
+    --remainingCorners[1] = traceLineDown(remainingCorners[1])
+    --remainingCorners[2] = traceLineDown(remainingCorners[2])
 
     -- Step 6: Update node with new corners and position
     node.nw = raisedNWPos
     node.se = raisedSEPos
-    node.ne = remainingCorners[1]
-    node.sw = remainingCorners[2]
+    --node.ne = remainingCorners[1]
+    --node.sw = remainingCorners[2]
 
     -- Step 7: Recalculate the middle position based on the fixed corners
     local finalMiddlePos = (raisedNWPos + raisedSEPos) / 2
@@ -157,23 +157,16 @@ end
 
 -- Adjust all nodes by fixing their positions and adding missing corners.
 function Navigation.FixAllNodes()
-    local nodes = Navigation.GetNodes()
-    --[[for id in pairs(nodes) do
+    --local nodes = Navigation.GetNodes()
+    --for id in pairs(nodes) do
         Navigation.FixNode(id)
-    end]]
-end
+    end
+end]]
 
 -- Set the raw nodes and copy them to the fixed nodes table
 ---@param nodes Node[]
 function Navigation.SetNodes(Nodes)
-    G.Navigation.rawNodes = Nodes
     G.Navigation.nodes = Nodes
-end
-
--- Set the raw nodes and copy them to the fixed nodes table
----@param nodes Node[]
-function Navigation.ResetNodes(RawNodes)
-    G.Navigation.nodes = RawNodes
 end
 
 function Navigation.Setup()
@@ -186,12 +179,6 @@ end
 ---@return Node[]
 function Navigation.GetNodes()
     return G.Navigation.nodes
-end
-
--- Get the raw nodes
----@return Node[]
-function Navigation.GetRawNodes()
-    return G.Navigation.rawNodes
 end
 
 -- Get the current path
@@ -381,6 +368,15 @@ function Navigation.GetClosestNode(pos)
     return closestNode
 end
 
+-- Perform a trace line down from a given height to check ground position
+---@param startPos table The start position of the trace
+---@param endPos table The end position of the trace
+---@return boolean Whether the trace line reaches the ground at the target position
+local function canTraceDown(startPos, endPos)
+    local traceResult = engine.TraceLine(startPos.pos, endPos.pos, MASK_PLAYERSOLID)
+    return traceResult.fraction == 1
+end
+
 -- Returns all adjacent nodes of the given node
 ---@param node Node
 ---@param nodes Node[]
@@ -417,7 +413,6 @@ local function GetAdjacentNodes(node, nodes)
 
     return adjacentNodes
 end
-
 
 function Navigation.FindPath(startNode, goalNode)
     if not startNode or not startNode.pos then

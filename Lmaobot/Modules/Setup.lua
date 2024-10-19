@@ -51,43 +51,26 @@ function SetupModule.generateNavFile()
     navCheckElapsedTime = 0
 end
 
--- Processes nav data to create nodes and precompute dist and cost
+-- Processes nav data to create nodes
 ---@param navData table
----@return table<number, PathNode>
+---@return table
 function SetupModule.processNavData(navData)
     local navNodes = {}
-
-    -- First pass: create all nodes
-    for index, area in ipairs(navData.areas) do
+    for _, area in ipairs(navData.areas) do
         local cX = (area.north_west.x + area.south_east.x) / 2
         local cY = (area.north_west.y + area.south_east.y) / 2
         local cZ = (area.north_west.z + area.south_east.z) / 2
 
-        navNodes[index] = {
+        navNodes[area.id] = {
+            --data
             pos = Vector3(cX, cY, cZ),
-            id = index,
-            connections = {},  -- Initialize connections
+            id = area.id,
+            c = area.connections,
+            --corners
             nw = area.north_west,
             se = area.south_east,
         }
     end
-
-    -- Second pass: map connections to node instances
-    for index, area in ipairs(navData.areas) do
-        local node = navNodes[index]
-        for dir = 1, 4 do
-            local conDir = area.connections[dir]
-            if conDir and conDir.connections then
-                for _, connectedAreaID in pairs(conDir.connections) do
-                    local connectedNode = navNodes[connectedAreaID]
-                    if connectedNode then
-                        table.insert(node.connections, connectedNode)
-                    end
-                end
-            end
-        end
-    end
-
     return navNodes
 end
 
