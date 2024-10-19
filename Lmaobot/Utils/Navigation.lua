@@ -415,8 +415,7 @@ local function GetAdjacentNodes(node, nodes)
                         print(string.format("Error: Node %d has invalid corners (NW or SE) in direction %d.", conNode.id, dir))
                     else
                         -- Horizontal check
-                        local horizontalCheck = ((conNodeNW.x - node.se.x) * (node.nw.x - conNodeSE.x) *
-                                                 (conNodeNW.y - node.se.y) * (node.nw.y - conNodeSE.y)) <= 0 and 1 or 0
+                        local horizontalCheck = (conNode.pos - node.pos):Length2D() < 750
 
                         -- Adjust vertical check logic
                         local verticalDiff = conNode.pos.z - node.pos.z
@@ -424,7 +423,7 @@ local function GetAdjacentNodes(node, nodes)
                         -- Ensure vertical movement is allowed:
                         -- - Only go up if the vertical difference is <= 72 units.
                         -- - Always allow going down, so verticalDiff < 0 is valid.
-                        if horizontalCheck == 1 and (verticalDiff <= 72 or verticalDiff < 0) then
+                        if horizontalCheck and (verticalDiff <= 72 or verticalDiff < 0) then
                             table.insert(adjacentNodes, conNode)
                         end
                     end

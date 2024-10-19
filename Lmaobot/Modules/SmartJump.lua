@@ -2,6 +2,10 @@
 local libLoaded, lnxLib = pcall(require, "lnxLib")
 assert(libLoaded, "lnxLib not found, please install it!")
 
+local G = require("Lmaobot.Utils.Globals")
+local Common = require("Lmaobot.Common")
+if not G.Menu.Movement.Smart_Jump then return end
+
 local Math = lnxLib.Utils.Math
 local Prediction = lnxLib.TF2.Prediction
 local WPlayer = lnxLib.TF2.WPlayer
@@ -32,15 +36,6 @@ local STATE_DESCENDING = "STATE_DESCENDING"
 
 -- Initial state
 local jumpState = STATE_IDLE
-
--- Function to normalize a vector
-local function NormalizeVector(vector)
-    local length = vector:Length()
-    if length == 0 then
-        return Vector3(0, 0, 0)
-    end
-    return Vector3(vector.x / length, vector.y / length, vector.z / length)
-end
 
 -- Function to rotate a vector by yaw angle
 local function RotateVectorByYaw(vector, yaw)
@@ -97,10 +92,10 @@ local function GetJumpPeak(horizontalVelocity, startPos)
     local distanceTravelled = horizontalSpeed * timeToPeak
 
     -- Calculate peak position vector
-    local peakPosition = startPos + NormalizeVector(horizontalVelocity) * distanceTravelled
+    local peakPosition = startPos + Common.Normalize(horizontalVelocity) * distanceTravelled
 
     -- Calculate direction to peak position
-    local directionToPeak = NormalizeVector(peakPosition - startPos)
+    local directionToPeak = Common.Normalize(peakPosition - startPos)
 
     return peakPosition, directionToPeak
 end
@@ -119,7 +114,7 @@ local function AdjustVelocity(cmd)
     local viewAngles = engine.GetViewAngles()
     -- Rotate movement input by yaw
     local rotatedMoveDir = RotateVectorByYaw(moveInput, viewAngles.yaw)
-    local normalizedMoveDir = NormalizeVector(rotatedMoveDir)
+    local normalizedMoveDir = Common.Normalize(rotatedMoveDir)
 
     -- Get current velocity
     local velocity = pLocal:EstimateAbsVelocity()
@@ -136,6 +131,7 @@ end
 -- Smart jump logic
 local function SmartJump(cmd)
     if not pLocal then return end
+    if not G.Menu.Movement.Smart_Jump then return end
 
     if onGround then
         -- Adjust velocity based on movement input
