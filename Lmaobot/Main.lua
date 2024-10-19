@@ -121,10 +121,10 @@ local function OnCreateMove(userCmd)
         end
 
         if (horizontalDist < G.Misc.NodeTouchDistance) and verticalDist <= G.Misc.NodeTouchHeight then
-            -- Move to the next node (in your original logic, it's moving to the previous one based on the order)
-            Navigation.MoveToNextNode() -- Will remove the last node in the path
+            -- Move to the next node when close enough
+            Navigation.MoveToNextNode()  -- Will remove the last node in the path
             Navigation.ResetTickTimer()
-
+        
             -- Check if the path is empty after removing the node
             if not G.Navigation.path or #G.Navigation.path == 0 then
                 Navigation.ClearPath()
@@ -133,37 +133,41 @@ local function OnCreateMove(userCmd)
                 return
             end
         else
-            -- Node skipping logic (adjusted for skipping based on proximity to the last few nodes)
+            -- Node skipping logic (check if player is closer to the next node than the current node is)
             if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(2, "node skip") then
-                local currentNode = G.Navigation.currentNode
                 local path = G.Navigation.path
                 local pathLength = #path
-
-                if currentNode and pathLength > 1 then
-                    -- Handle the end of the path by checking the third-from-last node or closer
-                    local nextNode = (pathLength >= 3) and path[pathLength - 2] or path[pathLength - 1]
-                    local currentNodeID = currentNode.id or -1
-                    local nextNodeID = nextNode.id or -1
-
-                    -- Calculate distances from player to current node and next node
-                    local currentDist = math.abs(LocalOrigin.x - currentNode.pos.x) + math.abs(LocalOrigin.y - currentNode.pos.y)
-                    local nextDist = math.abs(LocalOrigin.x - nextNode.pos.x) + math.abs(LocalOrigin.y - nextNode.pos.y)
-
-                    -- If closer to the next node than the current node, skip the current one
-                    if nextDist < currentDist then
-                        Log:Info("Current node %d is further than next node %d, skipping to the next node.", currentNodeID, nextNodeID)
-                        Navigation.MoveToNextNode()
+        
+                -- Ensure there are at least two nodes in the path to perform skipping
+                if pathLength >= 2 then
+                    local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
+                    local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
+        
+                    -- Ensure currentNode and nextNode are valid
+                    if currentNode and nextNode then
+                        -- Get the distances: (1) currentNode to nextNode, and (2) player to nextNode
+                        local currentToNextDist = (currentNode.pos - nextNode.pos):Length()
+                        local playerToNextDist = (LocalOrigin - nextNode.pos):Length()
+        
+                        -- If the player is closer to the next node than the current node is, skip to the next node
+                        if playerToNextDist < currentToNextDist then
+                            Log:Info("Player is closer to the next node. Skipping current node %d and moving to next node %d", currentNode.id, nextNode.id)
+                            Navigation.MoveToNextNode()  -- Skip to the next node
+                            Navigation.ResetTickTimer()
+                        else
+                            -- Continue moving towards the current node
+                            Log:Info("Moving towards current node %d", currentNode.id)
+                        end
                     else
-                        -- If not closer, continue towards the current node
-                        Log:Info("Moving towards current node %d", currentNodeID)
-                        Navigation.MoveToNextNode()
+                        Log:Warn("One or both nodes are nil, stopping skip logic.")
                     end
                 else
-                    Log:Warn("No valid current node or path.")
+                    Log:Warn("Not enough nodes in path to skip.")
                 end
             end
-
-            G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1 -- Increment movement timer
+        
+            -- Increment movement timer for the current node
+            G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
         end
 
         if (G.pLocal.flags & FL_ONGROUND == 1) or (pLocal:EstimateAbsVelocity():Length() < 50) then

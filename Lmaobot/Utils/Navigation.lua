@@ -420,20 +420,10 @@ local function GetAdjacentNodes(node, nodes)
 
                         -- Adjust the vertical check logic
                         local verticalDiff = conNode.pos.z - node.pos.z
-                        local verticalCheck = math.abs(verticalDiff) <= 72 and 1 or 0  -- 72 unit jump threshold
 
                         -- If both horizontal and vertical checks are valid, do a trace down check
-                        if horizontalCheck == 1 and verticalCheck == 1 then
+                        if horizontalCheck == 1 then
                             table.insert(adjacentNodes, conNode)
-                        else
-                            -- Debug info for failed vertical check
-                            if verticalCheck == 0 then
-                                print(string.format("Node %d failed vertical check with connected node %d. Vertical diff: %d units.", node.id, conNode.id, verticalDiff))
-                            end
-                            -- Debug info for failed horizontal check
-                            if horizontalCheck == 0 then
-                                print(string.format("Node %d failed horizontal check with connected node %d.", node.id, conNode.id))
-                            end
                         end
                     end
                 end
@@ -443,6 +433,7 @@ local function GetAdjacentNodes(node, nodes)
 
     return adjacentNodes
 end
+
 
 
 
