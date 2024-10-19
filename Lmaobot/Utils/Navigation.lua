@@ -380,32 +380,38 @@ end
 -- Returns all adjacent nodes of the given node
 ---@param node Node
 ---@param nodes Node[]
+---@return Node[]
 local function GetAdjacentNodes(node, nodes)
     local adjacentNodes = {}
 
+    -- Check if node and its connections table exist
+    if not node or not node.c then
+        print("Error: Node or its connections table (c) is missing.")
+        return adjacentNodes  -- Return an empty table
+    end
+
+    -- Iterate through the possible directions (assuming 1 to 4 for directions)
     for dir = 1, 4 do
         local conDir = node.c[dir]
-        for _, con in pairs(conDir.connections) do
-            local conNode = nodes[con]
-            if conNode then
-                -- Calculate horizontal and vertical conditions
-                local conNodeNW = conNode.nw
-                local conNodeSE = conNode.se
 
-                local horizontalCheck = ((conNodeNW.x - node.se.x) * (node.nw.x - conNodeSE.x) *
-                                         (conNodeNW.y - node.se.y) * (node.nw.y - conNodeSE.y)) <= 0 and 1 or 0
+        -- Check if the direction has any valid connections
+        if not conDir or not conDir.connections then
+            print(string.format("Warning: No connections found for direction %d of node %d.", dir, node.id))
+        else
+            -- Loop through the connections in the given direction
+            for _, con in pairs(conDir.connections) do
+                local conNode = nodes[con]
 
-                local verticalCheck = (conNode.z - (node.z - 70)) * ((node.z + 70) - conNode.z) >= 0 and 1 or 0
-
-                -- If both conditions are met, perform a trace down check
-                if horizontalCheck == 1 and verticalCheck == 1 then
-                    local startPos = { x = node.pos.x, y = node.pos.y, z = node.pos.z + 72 }
-                    local endPos = { x = conNode.pos.x, y = conNode.pos.y, z = conNode.pos.z }
-                    local traceDownCheck = canTraceDown(startPos, endPos)
-
-                    if traceDownCheck then
+                -- Check if the connected node exists in the node table
+                if conNode then
+                    -- Use simple vertical check (z-axis) like the original version
+                    if node.pos.z + 70 > conNode.pos.z then
                         table.insert(adjacentNodes, conNode)
+                    else
+                        print(string.format("Node %d failed vertical check with connected node %d.", node.id, conNode.id))
                     end
+                else
+                    print(string.format("Warning: Connection ID %d in direction %d of node %d does not have a valid node.", con, dir, node.id))
                 end
             end
         end
@@ -413,6 +419,8 @@ local function GetAdjacentNodes(node, nodes)
 
     return adjacentNodes
 end
+
+
 
 function Navigation.FindPath(startNode, goalNode)
     if not startNode or not startNode.pos then

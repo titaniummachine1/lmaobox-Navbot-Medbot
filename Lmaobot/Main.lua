@@ -133,29 +133,33 @@ local function OnCreateMove(userCmd)
                 return
             end
         else
-            -- Node skipping logic (adjusted for literal node IDs)
+            -- Node skipping logic (adjusted for skipping based on proximity to the last few nodes)
             if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(2, "node skip") then
-                -- Find the current node and the next node by their literal ID
                 local currentNode = G.Navigation.currentNode
-                local nextNode = G.Navigation.path[2]  -- Assuming next node is the second one in the path
+                local path = G.Navigation.path
+                local pathLength = #path
 
-                if currentNode and nextNode and currentNode.id and nextNode.id then
+                if currentNode and pathLength > 1 then
+                    -- Handle the end of the path by checking the third-from-last node or closer
+                    local nextNode = (pathLength >= 3) and path[pathLength - 2] or path[pathLength - 1]
+                    local currentNodeID = currentNode.id or -1
+                    local nextNodeID = nextNode.id or -1
+
                     -- Calculate distances from player to current node and next node
                     local currentDist = math.abs(LocalOrigin.x - currentNode.pos.x) + math.abs(LocalOrigin.y - currentNode.pos.y)
                     local nextDist = math.abs(LocalOrigin.x - nextNode.pos.x) + math.abs(LocalOrigin.y - nextNode.pos.y)
 
-                    -- If player is closer to the next node than the current node, we have skipped the current node
+                    -- If closer to the next node than the current node, skip the current one
                     if nextDist < currentDist then
-                        Log:Info("Current node %d is further than next node %d, skipping current node.", currentNode.id, nextNode.id)
-                        -- Skip the current node and move to the next node
+                        Log:Info("Current node %d is further than next node %d, skipping to the next node.", currentNodeID, nextNodeID)
                         Navigation.MoveToNextNode()
                     else
-                        -- Continue moving towards the current node
-                        Log:Info("Moving towards current node %d", currentNode.id)
+                        -- If not closer, continue towards the current node
+                        Log:Info("Moving towards current node %d", currentNodeID)
                         Navigation.MoveToNextNode()
                     end
                 else
-                    Log:Warn("Current or next node is nil or missing ID.")
+                    Log:Warn("No valid current node or path.")
                 end
             end
 
