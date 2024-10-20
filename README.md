@@ -4,6 +4,9 @@
 
 # LMAOBox-Navbot
 
+https://github.com/user-attachments/assets/2adab638-c426-4fcf-a240-fa6437004312
+
+
 **A dynamic pathfinding and navigation bot for Team Fortress 2, powered by LMAOBox Lua.**
 
 > **Note:** This script **requires** [lnxLib](https://github.com/lnx00/Lmaobox-Library/releases/latest). Ensure it’s installed before running NavBot.
