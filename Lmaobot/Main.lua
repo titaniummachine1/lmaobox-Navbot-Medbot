@@ -2,9 +2,6 @@
 ---@alias NavConnection { count: integer, connections: integer[] }
 ---@alias NavNode { id: integer, x: number, y: number, z: number, c: { [1]: NavConnection, [2]: NavConnection, [3]: NavConnection, [4]: NavConnection } }
 
-
---cleanup before loading
-collectgarbage("collect")
 --[[ Imports ]]
 local Common = require("Lmaobot.Common")
 if not Common then
@@ -12,21 +9,26 @@ if not Common then
     return
 end
 
-local G = require("Lmaobot.Utils.Globals")
-local Navigation = require("Lmaobot.Utils.Navigation")
-local WorkManager = require("Lmaobot.WorkManager")
-local Setup = require("Lmaobot.Modules.Setup")
-
+require("Lmaobot.Modules.SmartJump")
 require("Lmaobot.Visuals")
 require("Lmaobot.Menu")
 require("Lmaobot.Utils.Commands")
-require("Lmaobot.Modules.SmartJump")
 
+local G = require("Lmaobot.Utils.Globals")
+local Navigation = require("Lmaobot.Utils.Navigation")
+local WorkManager = require("Lmaobot.WorkManager")
+
+--last to speed up develeopment of stuff
+local Setup = require("Lmaobot.Modules.Setup")
 
 local Lib = Common.Lib
 local Log = Common.Log
 
 local Notify, WPlayer = Lib.UI.Notify, Lib.TF2.WPlayer
+
+
+--cleanup before loading
+collectgarbage("collect")
 
 --[[ Functions ]]
 local function HealthLogic(pLocal)
@@ -134,38 +136,59 @@ local function OnCreateMove(userCmd)
                 return
             end
         else
-            -- Node skipping logic (check if player is closer to the next node than the current node is)
-            if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(2, "node skip") then
-                local path = G.Navigation.path
-                local pathLength = #path
+ -- Node skipping logic (check next node instantly, and all nodes every 33 ticks)
+if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(4, "node skip") then
+    local path = G.Navigation.path
+    local pathLength = #path
 
-                -- Ensure there are at least two nodes in the path to perform skipping
-                if pathLength >= 2 then
-                    local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
-                    local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
+    -- Ensure there are at least two nodes in the path to perform skipping
+    if pathLength >= 2 then
+        local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
+        local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
+        local currentToPlayerDist = (LocalOrigin - currentNode.pos):Length()
 
-                    -- Ensure currentNode and nextNode are valid
-                    if currentNode and nextNode then
-                        -- Get the distances: (1) currentNode to nextNode, and (2) player to nextNode
-                        local currentToNextDist = (currentNode.pos - nextNode.pos):Length()
-                        local playerToNextDist = (LocalOrigin - nextNode.pos):Length()
+        -- Instant check for the next node
+        local nextToPlayerDist = (LocalOrigin - nextNode.pos):Length()
+        if nextToPlayerDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
+            if Common.isWalkable(currentNode.pos, nextNode.pos) then
+                Log:Info("Instant skipping to next node %d", nextNode.id)
+                G.Navigation.path[#G.Navigation.path] = nextNode  -- Set the new current node
+                Navigation.MoveToNextNode()  -- Skip to the next node
+                Navigation.ResetTickTimer()
+                return
+            end
+        end
 
-                        -- Perform a trace check (line-of-sight) to ensure there's no obstacle between the player and the next node
-                        if playerToNextDist < currentToNextDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
-                            -- Additionally, check if the path between the current node and the next node is walkable
-                            if Common.isWalkable(currentNode.pos, nextNode.pos) then
-                                Log:Info("Player is closer to the next node and path is clear. Skipping current node %d and moving to next node %d", currentNode.id, nextNode.id)
-                                Navigation.MoveToNextNode()  -- Skip to the next node
-                                Navigation.ResetTickTimer()
-                            else
-                                Log:Warn("Path between current node %d and next node %d is not walkable, not skipping.", currentNode.id, nextNode.id)
-                            end
-                        end
-                    else
-                        Log:Warn("One or both nodes are nil, stopping skip logic.")
+        -- Every 33 ticks, check for the closest node in the entire path
+        if (G.Navigation.currentNodeTicks % 33 == 0) then
+            local closestNode = currentNode  -- Default to current node
+            for i = pathLength - 1, 1, -1 do
+                local node = G.Navigation.path[i]  -- Get the node in the path
+                local playerToNodeDist = (LocalOrigin - node.pos):Length()
+
+                -- Check if the player is closer to this node and if the path to it is walkable
+                if playerToNodeDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, node.pos) then
+                    if Common.isWalkable(currentNode.pos, node.pos) then
+                        closestNode = node
+                        currentToPlayerDist = playerToNodeDist
                     end
                 end
             end
+
+            -- If a closer node was found, skip to it
+            if closestNode ~= currentNode then
+                Log:Info("Skipping to closer node %d", closestNode.id)
+                G.Navigation.path[#G.Navigation.path] = closestNode  -- Set the new current node
+                Navigation.MoveToNextNode()  -- Skip to the closest node
+                Navigation.ResetTickTimer()
+            end
+        end
+    end
+end
+
+-- Increment movement timer for the current node
+G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
+
 
             -- Increment movement timer for the current node
             G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1

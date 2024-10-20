@@ -212,7 +212,7 @@ end
 -- Remove the current node from the path
 function Navigation.RemoveCurrentNode()
     G.Navigation.currentNodeTicks = 0
-    table.remove(G.Navigation.path)
+    table.remove(G.Navigation.path[#G.Navigation.path])
 end
 
 -- Function to increment the current node ticks
@@ -377,7 +377,14 @@ local function canTraceDown(startPos, endPos)
     return traceResult.fraction == 1
 end
 
--- Returns all adjacent nodes of the given node
+-- Helper function to validate horizontal and vertical checks
+local function IsValidConnection(node, targetNode)
+    local horizontalCheck = (targetNode.pos - node.pos):Length() < 750
+    local verticalDiff = targetNode.pos.z - node.pos.z
+    return horizontalCheck and (verticalDiff <= 72 or verticalDiff < 0)
+end
+
+-- Returns all adjacent nodes of the given node, including visible ones
 ---@param node Node
 ---@param nodes Node[]
 ---@return Node[]
@@ -387,53 +394,38 @@ local function GetAdjacentNodes(node, nodes)
     -- Check if node and its connections table exist
     if not node or not node.c then
         print("Error: Node or its connections table (c) is missing.")
-        return adjacentNodes  -- Return an empty table
+        return adjacentNodes
     end
 
-    -- Iterate through the possible directions (assuming 1 to 4 for directions)
+    -- Iterate through connections (directions 1 to 4)
     for dir = 1, 4 do
         local conDir = node.c[dir]
 
-        -- Check if the direction has any valid connections
-        if not conDir or not conDir.connections then
-            print(string.format("Warning: No connections found for direction %d of node %d.", dir, node.id))
-        else
-            -- Loop through the connections in the given direction
+        if conDir and conDir.connections then
             for _, con in pairs(conDir.connections) do
                 local conNode = nodes[con]
-
-                -- Check if the connected node exists in the node table
-                if not conNode then
-                    print(string.format("Warning: Connection ID %d in direction %d of node %d does not have a valid node.", con, dir, node.id))
-                else
-                    -- Calculate horizontal checks
-                    local conNodeNW = conNode.nw
-                    local conNodeSE = conNode.se
-
-                    -- Ensure corners are valid for the node
-                    if not conNodeNW or not conNodeSE then
-                        print(string.format("Error: Node %d has invalid corners (NW or SE) in direction %d.", conNode.id, dir))
-                    else
-                        -- Horizontal check
-                        local horizontalCheck = (conNode.pos - node.pos):Length() < 750
-
-                        -- Adjust vertical check logic
-                        local verticalDiff = conNode.pos.z - node.pos.z
-
-                        -- Ensure vertical movement is allowed:
-                        -- - Only go up if the vertical difference is <= 72 units.
-                        -- - Always allow going down, so verticalDiff < 0 is valid.
-                        if horizontalCheck and (verticalDiff <= 72 or verticalDiff < 0) then
-                            table.insert(adjacentNodes, conNode)
-                        end
-                    end
+                if conNode and IsValidConnection(node, conNode) then
+                    table.insert(adjacentNodes, conNode)
                 end
+            end
+        else
+            print(string.format("Warning: No connections for direction %d of node %d.", dir, node.id))
+        end
+    end
+
+    -- Add visible nodes
+    if node.visible then
+        for _, visible in ipairs(node.visible) do
+            local visNode = nodes[visible.id]
+            if visNode and IsValidConnection(node, visNode) then
+                table.insert(adjacentNodes, visNode)
             end
         end
     end
 
     return adjacentNodes
 end
+
 
 
 function Navigation.FindPath(startNode, goalNode)
@@ -457,6 +449,7 @@ function Navigation.FindPath(startNode, goalNode)
 end
 
 function Navigation.MoveToNextNode()
+    Navigation.ResetTickTimer()
     if G.Navigation.path and #G.Navigation.path > 0 then
         -- Remove the last node from the path
         table.remove(G.Navigation.path)

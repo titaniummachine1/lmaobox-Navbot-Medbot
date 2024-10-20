@@ -3,7 +3,6 @@ local libLoaded, lnxLib = pcall(require, "lnxLib")
 assert(libLoaded, "lnxLib not found, please install it!")
 
 local G = require("Lmaobot.Utils.Globals")
-local Common = require("Lmaobot.Common")
 if not G.Menu.Movement.Smart_Jump then return end
 
 local Math = lnxLib.Utils.Math
@@ -28,14 +27,14 @@ local GRAVITY = 800                         -- Gravity per second squared
 local JUMP_FORCE = 277                      -- Initial vertical boost for a duck jump
 
 -- State Definitions
-local STATE_IDLE = "STATE_IDLE"
-local STATE_PREPARE_JUMP = "STATE_PREPARE_JUMP"
+local STATE_AWAITING_JUMP = "STATE_AWAITING_JUMP"
 local STATE_CTAP = "STATE_CTAP"
+local STATE_JUMP = "STATE_JUMP"
 local STATE_ASCENDING = "STATE_ASCENDING"
 local STATE_DESCENDING = "STATE_DESCENDING"
 
 -- Initial state
-local jumpState = STATE_IDLE
+local jumpState = STATE_AWAITING_JUMP
 
 -- Function to rotate a vector by yaw angle
 local function RotateVectorByYaw(vector, yaw)
@@ -46,6 +45,11 @@ local function RotateVectorByYaw(vector, yaw)
         sinYaw * vector.x + cosYaw * vector.y,
         vector.z
     )
+end
+
+-- Function to normalize a vector
+local function Normalize(vec)
+    return vec / vec:Length()
 end
 
 -- Function to check if the surface is walkable based on its normal
@@ -65,6 +69,10 @@ end
 local function IsPlayerDucking(player)
     local flags = player:GetPropInt("m_fFlags")
     return (flags & FL_DUCKING) == FL_DUCKING
+end
+
+local function isSmaller(player)
+    return player:GetPropVector("m_vecViewOffset[0]").z < 65
 end
 
 -- Function to calculate the strafe angle delta
@@ -92,10 +100,10 @@ local function GetJumpPeak(horizontalVelocity, startPos)
     local distanceTravelled = horizontalSpeed * timeToPeak
 
     -- Calculate peak position vector
-    local peakPosition = startPos + Common.Normalize(horizontalVelocity) * distanceTravelled
+    local peakPosition = startPos + Normalize(horizontalVelocity) * distanceTravelled
 
     -- Calculate direction to peak position
-    local directionToPeak = Common.Normalize(peakPosition - startPos)
+    local directionToPeak = Normalize(peakPosition - startPos)
 
     return peakPosition, directionToPeak
 end
@@ -114,7 +122,7 @@ local function AdjustVelocity(cmd)
     local viewAngles = engine.GetViewAngles()
     -- Rotate movement input by yaw
     local rotatedMoveDir = RotateVectorByYaw(moveInput, viewAngles.yaw)
-    local normalizedMoveDir = Common.Normalize(rotatedMoveDir)
+    local normalizedMoveDir = Normalize(rotatedMoveDir)
 
     -- Get current velocity
     local velocity = pLocal:EstimateAbsVelocity()
@@ -182,7 +190,7 @@ local function OnCreateMove(cmd)
     local wLocal = WPlayer.GetLocal()
 
     if not pLocal or not pLocal:IsAlive() or not wLocal then
-        jumpState = STATE_IDLE
+        jumpState = STATE_AWAITING_JUMP -- Previously STATE_IDLE
         return
     end
 
@@ -201,26 +209,24 @@ local function OnCreateMove(cmd)
     local strafeDelta = CalcStrafe(wLocal)
 
     -- Handle edge case when player is on ground and ducking
-    if onGround and (pLocal:GetPropVector("m_vecViewOffset[0]").z < 65 or isDucking) and jumpState ~= STATE_CTAP then
-        jumpState = STATE_CTAP
+    if onGround and isDucking or onGround and isSmaller(pLocal) then
+        jumpState = STATE_AWAITING_JUMP --jump if youre duckign already means we could have gotten stuck ducking
     end
 
     -- State machine for jump logic
-    if jumpState == STATE_IDLE then
+    if jumpState == STATE_AWAITING_JUMP then
         -- Waiting for jump
         SmartJump(cmd)
-        if onGround or shouldJump then
-            if shouldJump then
-                jumpState = STATE_PREPARE_JUMP
-            end
+        if shouldJump then
+            jumpState = STATE_CTAP -- Previously STATE_PREPARE_JUMP
         end
-    elseif jumpState == STATE_PREPARE_JUMP then
+    elseif jumpState == STATE_CTAP then
         -- Start crouching
         cmd:SetButtons(cmd.buttons | IN_DUCK)
         cmd:SetButtons(cmd.buttons & (~IN_JUMP))
-        jumpState = STATE_CTAP
+        jumpState = STATE_JUMP -- Previously STATE_CTAP
         return
-    elseif jumpState == STATE_CTAP then
+    elseif jumpState == STATE_JUMP then
         -- Uncrouch and jump
         cmd:SetButtons(cmd.buttons & (~IN_DUCK))
         cmd:SetButtons(cmd.buttons | IN_JUMP)
@@ -231,6 +237,8 @@ local function OnCreateMove(cmd)
         cmd:SetButtons(cmd.buttons | IN_DUCK)
         if pLocal:EstimateAbsVelocity().z <= 0 then
             jumpState = STATE_DESCENDING
+        elseif onGround then
+            jumpState = STATE_AWAITING_JUMP --we landed prematurely
         end
         return
     elseif jumpState == STATE_DESCENDING then
@@ -247,11 +255,11 @@ local function OnCreateMove(cmd)
             if shouldJump then
                 cmd:SetButtons(cmd.buttons & (~IN_DUCK))
                 cmd:SetButtons(cmd.buttons | IN_JUMP)
-                jumpState = STATE_PREPARE_JUMP
+                jumpState = STATE_CTAP -- Previously STATE_PREPARE_JUMP
             end
         else
             cmd:SetButtons(cmd.buttons | IN_DUCK)
-            jumpState = STATE_IDLE
+            jumpState = STATE_AWAITING_JUMP -- Previously STATE_IDLE
         end
     end
 end
@@ -259,7 +267,7 @@ end
 -- OnDraw callback for visual debugging
 local function OnDraw()
     pLocal = entities.GetLocalPlayer()
-    if not pLocal then return end
+    if not pLocal or jumpState ~= STATE_AWAITING_JUMP then return end
 
     -- Draw predicted position
     local screenPredPos = client.WorldToScreen(predictedPosition)
