@@ -1,7 +1,3 @@
-Here’s a fancier and cleaner version of your README:
-
----
-
 ![GitHub commit activity](https://img.shields.io/github/commit-activity/m/titaniummachine1/lmaobox-Navbot-Medbot)  
 ![GitHub Release Date](https://img.shields.io/github/release-date/titaniummachine1/lmaobox-Navbot-Medbot)  
 ![GitHub all releases](https://img.shields.io/github/downloads/titaniummachine1/lmaobox-Navbot-Medbot/total)
