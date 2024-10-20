@@ -144,7 +144,7 @@ local function OnDraw()
     end
 
     -- Draw current path
-    if G.Menu.Visuals.drawPath and G.State == G.StateDefinition.PathWalking and G.Navigation.path then
+    if G.Menu.Visuals.drawPath and G.Navigation.path then
         draw.Color(255, 255, 255, 255)
 
         for i = 1, #G.Navigation.path - 1 do

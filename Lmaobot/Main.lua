@@ -136,60 +136,51 @@ local function OnCreateMove(userCmd)
                 return
             end
         else
- -- Node skipping logic (check next node instantly, and all nodes every 33 ticks)
-if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(4, "node skip") then
-    local path = G.Navigation.path
-    local pathLength = #path
+            -- Node skipping logic
+            if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(2, "node skip") then
+                local path = G.Navigation.path
+                local pathLength = #path
 
-    -- Ensure there are at least two nodes in the path to perform skipping
-    if pathLength >= 2 then
-        local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
-        local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
-        local currentToPlayerDist = (LocalOrigin - currentNode.pos):Length()
+                -- Ensure there are at least two nodes in the path to perform skipping
+                if pathLength >= 2 then
+                    local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
+                    local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
+                    local currentToPlayerDist = (LocalOrigin - currentNode.pos):Length()
 
-        -- Instant check for the next node
-        local nextToPlayerDist = (LocalOrigin - nextNode.pos):Length()
-        if nextToPlayerDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
-            if Common.isWalkable(currentNode.pos, nextNode.pos) then
-                Log:Info("Instant skipping to next node %d", nextNode.id)
-                G.Navigation.path[#G.Navigation.path] = nextNode  -- Set the new current node
-                Navigation.MoveToNextNode()  -- Skip to the next node
-                Navigation.ResetTickTimer()
-                return
-            end
-        end
+                    -- Real-time check for the next node
+                    local nextToPlayerDist = (LocalOrigin - nextNode.pos):Length()
+                    if nextToPlayerDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
+                        if Common.isWalkable(currentNode.pos, nextNode.pos) then
+                            Log:Info("Instant skipping to next node %d", nextNode.id)
+                            Navigation.MoveToNextNode()  -- Skip to the next node
+                        end
+                    end
 
-        -- Every 33 ticks, check for the closest node in the entire path
-        if (G.Navigation.currentNodeTicks % 33 == 0) then
-            local closestNode = currentNode  -- Default to current node
-            for i = pathLength - 1, 1, -1 do
-                local node = G.Navigation.path[i]  -- Get the node in the path
-                local playerToNodeDist = (LocalOrigin - node.pos):Length()
+                    -- Full path check every 16 ticks
+                    if WorkManager.attemptWork(16, "node skip all") then
+                        local closestNode = currentNode
+                        for i = pathLength - 1, 1, -1 do
+                            local node = G.Navigation.path[i]
+                            local playerToNodeDist = (LocalOrigin - node.pos):Length()
 
-                -- Check if the player is closer to this node and if the path to it is walkable
-                if playerToNodeDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, node.pos) then
-                    if Common.isWalkable(currentNode.pos, node.pos) then
-                        closestNode = node
-                        currentToPlayerDist = playerToNodeDist
+                            -- Find closest walkable node in the entire path
+                            if playerToNodeDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, node.pos) then
+                                if Common.isWalkable(currentNode.pos, node.pos) then
+                                    closestNode = node
+                                    currentToPlayerDist = playerToNodeDist
+                                end
+                            end
+                        end
+
+                        -- If a closer node is found, skip to it
+                        if closestNode ~= currentNode then
+                            Log:Info("Skipping to closer node %d", closestNode.id)
+                            G.Navigation.path[#G.Navigation.path] = closestNode
+                            Navigation.MoveToNextNode()  -- Skip to the closest node
+                        end
                     end
                 end
             end
-
-            -- If a closer node was found, skip to it
-            if closestNode ~= currentNode then
-                Log:Info("Skipping to closer node %d", closestNode.id)
-                G.Navigation.path[#G.Navigation.path] = closestNode  -- Set the new current node
-                Navigation.MoveToNextNode()  -- Skip to the closest node
-                Navigation.ResetTickTimer()
-            end
-        end
-    end
-end
-
--- Increment movement timer for the current node
-G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
-
-
             -- Increment movement timer for the current node
             G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
         end
@@ -208,13 +199,11 @@ G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
             end
 
             -- If still stuck after multiple attempts, remove the connection and re-path
-            if G.Navigation.currentNodeTicks > 264 then -- 264 ticks = 4 seconds
+            if WorkManager.attemptWork(132, "get unstuck") then
                 if not Common.isWalkable(LocalOrigin, nodePos) then
                     local currentIndex = G.Navigation.currentNodeinPath
                     Log:Warn("Path to node %d is blocked or unreachable, removing connection and repathing...", currentIndex or -1)
                     if G.Navigation.path and currentIndex then
-                        -- Remove the connection between the current node and the previous node
-
                         -- Clear the current path and reset timers to find a new path
                         Navigation.ClearPath()
                         Navigation.ResetTickTimer()
@@ -300,19 +289,21 @@ G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
             return
         end
 
-        Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
-        Navigation.ClearPath() -- Ensure we clear the current path before generating a new one
-        Navigation.FindPath(startNode, goalNode) -- Run pathfinding synchronously
+        if WorkManager.attemptWork(33, "Pathfinding") then
+            Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
+            Navigation.ClearPath() -- Ensure we clear the current path before generating a new one
+            Navigation.FindPath(startNode, goalNode) -- Run pathfinding synchronously
 
-        -- Check if pathfinding succeeded
-        if G.Navigation.path and #G.Navigation.path > 0 then
-            G.Navigation.currentNodeinPath = #G.Navigation.path  -- Start at the last node
-            G.Navigation.currentNode = G.Navigation.path[G.Navigation.currentNodeinPath]
-            G.Navigation.currentNodePos = G.Navigation.currentNode.pos
-            Navigation.ResetTickTimer()
-            Log:Info("Path found.")
-        else
-            Log:Warn("No path found.")
+            -- Check if pathfinding succeeded
+            if G.Navigation.path and #G.Navigation.path > 0 then
+                G.Navigation.currentNodeinPath = #G.Navigation.path  -- Start at the last node
+                G.Navigation.currentNode = G.Navigation.path[G.Navigation.currentNodeinPath]
+                G.Navigation.currentNodePos = G.Navigation.currentNode.pos
+                Navigation.ResetTickTimer()
+                Log:Info("Path found.")
+            else
+                Log:Warn("No path found.")
+            end
         end
     else
         Log:Warn("Unknown state: %s", tostring(G.State))
