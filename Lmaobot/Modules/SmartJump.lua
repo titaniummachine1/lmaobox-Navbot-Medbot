@@ -208,7 +208,7 @@ local function OnCreateMove(cmd)
     -- Calculate strafe angle delta
     local strafeDelta = CalcStrafe(wLocal)
 
-    -- Handle edge case when player is on ground and ducking
+    -- Handle edge case when player is on ground and ducking.
     if onGround and isDucking or onGround and isSmaller(pLocal) then
         jumpState = STATE_AWAITING_JUMP --jump if youre duckign already means we could have gotten stuck ducking
     end
