@@ -386,8 +386,6 @@ local function isvalid(node, connode)
     return node and connode and (connode.pos.z - node.pos.z) < 90
 end
 
-
-
 -- Returns all adjacent nodes of the given node, including visible ones
 ---@param node Node
 ---@param nodes Node[]

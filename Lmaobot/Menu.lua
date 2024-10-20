@@ -138,6 +138,11 @@ local function OnDrawMenu()
             ImMenu.BeginFrame(1)
                 G.Menu.Main.smoothFactor = ImMenu.Slider("Smooth Factor", G.Menu.Main.smoothFactor, 0.01, 20, 0.01)
             ImMenu.EndFrame()
+
+              -- Slider for loading progress (non-modifiable)
+            ImMenu.BeginFrame(1)
+                ImMenu.Slider("Loading Progress", G.Menu.Main.Loading, 0, 100, nil, true) -- Last argument makes it read-only
+            ImMenu.EndFrame()
         end
 
 

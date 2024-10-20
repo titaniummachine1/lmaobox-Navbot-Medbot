@@ -10,6 +10,7 @@ G.Menu = {
     },
 
     Main = {
+        Loading = 0,
         Walking = true,
         Skip_Nodes = true, -- skips nodes if it can go directly to ones closer to target.
         Optymise_Path = true,-- straighten the nodes into segments so you would go in straight line

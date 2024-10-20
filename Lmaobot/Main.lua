@@ -120,7 +120,7 @@ local function OnCreateMove(userCmd)
             end
         else
             -- Node skipping logic (check if player is closer to the next node than the current node is)
-            if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(2, "node skip") then
+            if G.Menu.Main.Skip_Nodes then
                 local path = G.Navigation.path
                 local pathLength = #path
 
@@ -149,7 +149,7 @@ local function OnCreateMove(userCmd)
 
 
                     -- Full path check every 16 ticks
-                    if WorkManager.attemptWork(33, "node skip all") then
+                    if WorkManager.attemptWork(7, "node skip all") then
                         local closestNodeIndex = #G.Navigation.path
                         local currentToPlayerDist = 1000
 

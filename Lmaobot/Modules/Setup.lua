@@ -7,6 +7,7 @@ SetupModule.__index = SetupModule
 local Common = require("Lmaobot.Common")
 local G = require("Lmaobot.Utils.Globals")
 local SourceNav = require("Lmaobot.Utils.SourceNav")
+local Navigation = require("Lmaobot.Utils.Navigation")
 local Log = Common.Log
 
 -- Variables to handle asynchronous nav file loading
@@ -51,8 +52,7 @@ function SetupModule.generateNavFile()
     navCheckElapsedTime = 0
 end
 
-local batchIndex = 1
-local batchSize = 10
+local batchSize = 50
 
 -- Processes nav data and creates nodes, excluding visible nodes for now
 function SetupModule.processNavData(navData)
@@ -74,11 +74,13 @@ function SetupModule.processNavData(navData)
     return navNodes
 end
 
--- Function to process visible node connections in batches
 local function processVisibleNodesBatch(nodes)
     local processedCount = 0
+    local totalProcessed = true -- Track if all nodes have been processed
+
     for id, node in pairs(nodes) do
         if node.visible_areas then
+            totalProcessed = false -- We have visible nodes left to process
             for _, visible in ipairs(node.visible_areas) do
                 local visNode = nodes[visible.id]
                 if visNode and Common.isWalkable(node.pos, visNode.pos) then
@@ -89,25 +91,32 @@ local function processVisibleNodesBatch(nodes)
                 end
                 processedCount = processedCount + 1
                 if processedCount >= batchSize then
-                    return  -- Stop processing after batchSize nodes
+                    return false -- Stop processing for this frame, more to process
                 end
             end
             node.visible_areas = nil -- Clear visible_areas once processed
         end
     end
+
+    return totalProcessed -- Return true if all nodes are processed
 end
 
 -- OnDraw callback to process batches of visible nodes
 local function OnDraw()
-    if batchIndex <= #G.Navigation.nodes then
-        processVisibleNodesBatch(G.Navigation.nodes)
+    local allProcessed = processVisibleNodesBatch(G.Navigation.nodes)
+
+    if allProcessed then
+        -- All visible nodes have been processed, clear path and trigger re-pathing
+        Log:Info("All visible nodes processed, repathing...")
+        Navigation.ClearPath()
+        callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
     end
 end
 
 -- Register the OnDraw callback to be called each frame
-
-callbacks.Unregister("FireGameEvent", "ProcessVisibleNodesBatch")
+callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
 callbacks.Register("Draw", "ProcessVisibleNodesBatch", OnDraw)
+
 
 -- Main function to load the nav file
 ---@param navFile string
