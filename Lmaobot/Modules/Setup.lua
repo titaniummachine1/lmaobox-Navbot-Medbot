@@ -153,9 +153,18 @@ function SetupModule.SetupNavigation()
     Log:Info("Navigation setup initiated.")
 end
 
--- Register the function to be called periodically (e.g., in your main update loop)
-callbacks.Register("Draw", "NavFileCheck", function()
+---@param event GameEvent
+local function OnGameEvent(event)
+    local eventName = event:GetName()
     SetupModule.checkNavFileGeneration()
-end)
+    if eventName == "game_newmap" then
+        Log:Info("New map detected, reloading nav file...")
+        SetupModule.SetupNavigation()
+    end
+end
+
+callbacks.Unregister("FireGameEvent", "LNX.Lmaobot.FireGameEvent")
+callbacks.Register("FireGameEvent", "LNX.Lmaobot.FireGameEvent", OnGameEvent)
+
 
 return SetupModule

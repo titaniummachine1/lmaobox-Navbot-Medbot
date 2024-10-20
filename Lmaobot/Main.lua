@@ -322,22 +322,10 @@ end
 Log:Info("New map detected, reloading nav file...")
 Setup.SetupNavigation()
 
----@param event GameEvent
-local function OnGameEvent(event)
-    local eventName = event:GetName()
-
-    if eventName == "game_newmap" then
-        Log:Info("New map detected, reloading nav file...")
-        Setup.SetupNavigation()
-    end
-end
-
 callbacks.Unregister("CreateMove", "LNX.Lmaobot.CreateMove")
 callbacks.Unregister("DrawModel", "LNX.Lmaobot.DrawModel")
-callbacks.Unregister("FireGameEvent", "LNX.Lmaobot.FireGameEvent")
 
 callbacks.Register("CreateMove", "LNX.Lmaobot.CreateMove", OnCreateMove)
 callbacks.Register("DrawModel", "LNX.Lmaobot.DrawModel", OnDrawModel)
-callbacks.Register("FireGameEvent", "LNX.Lmaobot.FireGameEvent", OnGameEvent)
 
 Notify.Alert("Lmaobot loaded!")
