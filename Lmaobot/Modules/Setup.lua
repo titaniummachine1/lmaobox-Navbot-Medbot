@@ -51,9 +51,10 @@ function SetupModule.generateNavFile()
     navCheckElapsedTime = 0
 end
 
--- Processes nav data to create nodes
----@param navData table
----@return table
+local batchIndex = 1
+local batchSize = 10
+
+-- Processes nav data and creates nodes, excluding visible nodes for now
 function SetupModule.processNavData(navData)
     local navNodes = {}
     for _, area in ipairs(navData.areas) do
@@ -62,17 +63,51 @@ function SetupModule.processNavData(navData)
         local cZ = (area.north_west.z + area.south_east.z) / 2
 
         navNodes[area.id] = {
-            --data
             pos = Vector3(cX, cY, cZ),
             id = area.id,
             c = area.connections,
-            --corners
             nw = area.north_west,
             se = area.south_east,
+            visible_areas = area.visible_areas  -- Store visible areas for later processing
         }
     end
     return navNodes
 end
+
+-- Function to process visible node connections in batches
+local function processVisibleNodesBatch(nodes)
+    local processedCount = 0
+    for id, node in pairs(nodes) do
+        if node.visible_areas then
+            for _, visible in ipairs(node.visible_areas) do
+                local visNode = nodes[visible.id]
+                if visNode and Common.isWalkable(node.pos, visNode.pos) then
+                    node.c = node.c or {}
+                    node.c[5] = node.c[5] or { count = 0, connections = {} }
+                    table.insert(node.c[5].connections, visNode.id)
+                    node.c[5].count = node.c[5].count + 1
+                end
+                processedCount = processedCount + 1
+                if processedCount >= batchSize then
+                    return  -- Stop processing after batchSize nodes
+                end
+            end
+            node.visible_areas = nil -- Clear visible_areas once processed
+        end
+    end
+end
+
+-- OnDraw callback to process batches of visible nodes
+local function OnDraw()
+    if batchIndex <= #G.Navigation.nodes then
+        processVisibleNodesBatch(G.Navigation.nodes)
+    end
+end
+
+-- Register the OnDraw callback to be called each frame
+
+callbacks.Unregister("FireGameEvent", "ProcessVisibleNodesBatch")
+callbacks.Register("Draw", "ProcessVisibleNodesBatch", OnDraw)
 
 -- Main function to load the nav file
 ---@param navFile string

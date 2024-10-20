@@ -13,48 +13,53 @@ local Log = Common.Log
 local Lib = Common.Lib
 assert(Lib, "Lib is nil")
 
--- Constants
-
-local DROP_HEIGHT = 450  -- Define your constants outside the function
-local Jump_Height = 72 --duck jump height
-
-local HULL_MIN = G.pLocal.vHitbox.Min
-local HULL_MAX = G.pLocal.vHitbox.Max
-local TRACE_MASK = MASK_PLAYERSOLID
-
 function Navigation.RemoveConnection(nodeA, nodeB)
-    -- If nodeA or nodeB is nil, exit the function
+    -- Ensure nodeA and nodeB are valid and present in G.Navigation.nodes
     if not nodeA or not nodeB then
         print("One or both nodes are nil, exiting function")
         return
     end
 
-    -- Remove the connection from nodeA to nodeB
+    -- Access global nodes table directly
+    local nodeAGlobal = G.Navigation.nodes[nodeA.id]
+    local nodeBGlobal = G.Navigation.nodes[nodeB.id]
+
+    if not nodeAGlobal or not nodeBGlobal then
+        print("One or both nodes are not found in the global node table")
+        return
+    end
+
+    -- Remove connection from nodeA to nodeB
     for dir = 1, 4 do
-        local conDir = nodeA.c[dir]
-        for i, con in ipairs(conDir.connections) do
-            if con == nodeB.id then
-                print("Removing connection between " .. nodeA.id .. " and " .. nodeB.id)
-                table.remove(conDir.connections, i)
-                conDir.count = conDir.count - 1
-                break  -- Exit the loop once the connection is found and removed
+        local conDir = G.Navigation.nodes[nodeA.id].c[dir]
+        if conDir then
+            for i, con in ipairs(conDir.connections) do
+                if con == nodeBGlobal.id then
+                    print("Removing connection from node " .. nodeA.id .. " to node " .. nodeB.id)
+                    table.remove(conDir.connections, i)
+                    conDir.count = conDir.count - 1
+                    break  -- Stop after finding and removing the connection
+                end
             end
         end
     end
 
-    -- Remove the reverse connection from nodeB to nodeA
+    -- Remove reverse connection from nodeB to nodeA
     for dir = 1, 4 do
-        local conDir = nodeB.c[dir]
-        for i, con in ipairs(conDir.connections) do
-            if con == nodeA.id then
-                print("Removing reverse connection between " .. nodeB.id .. " and " .. nodeA.id)
-                table.remove(conDir.connections, i)
-                conDir.count = conDir.count - 1
-                break  -- Exit the loop once the connection is found and removed
+        local conDir = G.Navigation.nodes[nodeB.id].c[dir]
+        if conDir then
+            for i, con in ipairs(conDir.connections) do
+                if con == nodeA.id then
+                    print("Removing reverse connection from node " .. nodeB.id .. " to node " .. nodeA.id)
+                    table.remove(conDir.connections, i)
+                    conDir.count = conDir.count - 1
+                    break  -- Stop after finding and removing the reverse connection
+                end
             end
         end
     end
 end
+
 
 --[[-- Perform a trace hull down from the given position to the ground
 ---@param position Vector3 The start position of the trace
@@ -377,6 +382,12 @@ local function canTraceDown(startPos, endPos)
     return traceResult.fraction == 1
 end
 
+local function isvalid(node, connode)
+    return node and connode and (connode.pos.z - node.pos.z) < 90
+end
+
+
+
 -- Returns all adjacent nodes of the given node, including visible ones
 ---@param node Node
 ---@param nodes Node[]
@@ -391,26 +402,20 @@ local function GetAdjacentNodes(node, nodes)
     end
 
     -- Iterate through connections (directions 1 to 4)
-    for dir = 1, 4 do
+    for dir = 1, 27 do
+        if not node.c[dir] then break end
+
         local conDir = node.c[dir]
 
         if conDir and conDir.connections then
             for _, con in pairs(conDir.connections) do
                 local conNode = nodes[con]
-                table.insert(adjacentNodes, conNode)
+                if conNode and isvalid(node, conNode) then
+                    table.insert(adjacentNodes, conNode)
+                end
             end
         else
             print(string.format("Warning: No connections for direction %d of node %d.", dir, node.id))
-        end
-    end
-
-    -- Add visible nodes
-    if node.visible then
-        for _, visible in ipairs(node.visible) do
-            local visNode = nodes[visible.id]
-            if visNode and IsValidConnection(node, visNode) then
-                table.insert(adjacentNodes, visNode)
-            end
         end
     end
 

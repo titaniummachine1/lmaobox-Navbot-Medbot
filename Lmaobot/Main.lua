@@ -192,22 +192,24 @@ local function OnCreateMove(userCmd)
             end
 
             -- If still stuck after multiple attempts, remove the connection and re-path
-            if WorkManager.attemptWork(132, "get unstuck") then
+            if WorkManager.attemptWork(177, "get unstuck") then
                 if not Common.isWalkable(LocalOrigin, nodePos) then
-                    local currentIndex = G.Navigation.currentNodeinPath
-                    Log:Warn("Path to node %d is blocked or unreachable, removing connection and repathing...", currentIndex or -1)
-                    if G.Navigation.path and currentIndex then
-                        -- Clear the current path and reset timers to find a new path
+                    local currentNode = G.Navigation.path[#G.Navigation.path]
+                    local NextNode = G.Navigation.path[#G.Navigation.path - 1]
+                    if currentNode and NextNode then
+                        Log:Warn("Path blocked, removing connection between node %d and node %d", currentNode.id, NextNode.id)
+                        -- Remove the connection between the previousNode and nodeBeforePrevious
+                        Navigation.RemoveConnection(currentNode, NextNode)
                         Navigation.ClearPath()
                         Navigation.ResetTickTimer()
-                        Log:Info("Connection removed and re-pathing initiated.")
+                        Log:Info("Connection removed, re-pathing initiated.")
                     else
-                        Log:Warn("Current path or node ID is nil.")
+                        Log:Warn("Previous node or node before previous is nil, unable to remove connection.")
                     end
                 else
-                    -- If path is not blocked but still stuck, attempt to clear path and re-path
+                    -- If path is not blocked but still stuck, clear and re-path
                     if not WorkManager.attemptWork(5, "pathCheck") then
-                        Log:Warn("Path to node %d is stuck but not blocked, repathing...", G.Navigation.currentNodeID or -1)
+                        Log:Warn("Path is stuck but walkable, re-pathing...")
                         Navigation.ClearPath()
                         Navigation.ResetTickTimer()
                     end
