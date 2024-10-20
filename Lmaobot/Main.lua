@@ -3,32 +3,23 @@
 ---@alias NavNode { id: integer, x: number, y: number, z: number, c: { [1]: NavConnection, [2]: NavConnection, [3]: NavConnection, [4]: NavConnection } }
 
 --[[ Imports ]]
+local G = require("Lmaobot.Utils.Globals")
 local Common = require("Lmaobot.Common")
-if not Common then
-    error("Failed to load Lmaobot.Common module")
-    return
-end
-
+require("Lmaobot.Utils.Commands")
 require("Lmaobot.Modules.SmartJump")
 require("Lmaobot.Visuals")
 require("Lmaobot.Menu")
-require("Lmaobot.Utils.Commands")
 
-local G = require("Lmaobot.Utils.Globals")
 local Navigation = require("Lmaobot.Utils.Navigation")
 local WorkManager = require("Lmaobot.WorkManager")
 
 --last to speed up develeopment of stuff
-local Setup = require("Lmaobot.Modules.Setup")
+require("Lmaobot.Modules.Setup")
 
 local Lib = Common.Lib
 local Log = Common.Log
 
 local Notify, WPlayer = Lib.UI.Notify, Lib.TF2.WPlayer
-
-
---cleanup before loading
-collectgarbage("collect")
 
 --[[ Functions ]]
 local function HealthLogic(pLocal)
@@ -65,21 +56,13 @@ local function OnCreateMove(userCmd)
         return
     end
 
-    G.pLocal.entity = pLocal
     G.pLocal.flags = pLocal:GetPropInt("m_fFlags") or 0
     G.pLocal.Origin = pLocal:GetAbsOrigin()
-
-    if not userCmd then
-        Log:Error("userCmd is nil.")
-        return
-    end
 
     -- Determine the bot's state
     if (userCmd:GetForwardMove() ~= 0 or userCmd:GetSideMove() ~= 0) then
         G.State = G.StateDefinition.ManualBypass
-    elseif not G.Navigation.nodes then
-        G.State = G.StateDefinition.ManualBypass
-    elseif G.Navigation.path and #G.Navigation.path > 0 then
+    elseif G.Navigation.path and #G.Navigation.path > 0 then -- you got path
         G.State = G.StateDefinition.PathWalking
     else
         G.State = G.StateDefinition.Pathfinding
@@ -136,7 +119,7 @@ local function OnCreateMove(userCmd)
                 return
             end
         else
-            -- Node skipping logic
+            -- Node skipping logic (check if player is closer to the next node than the current node is)
             if G.Menu.Main.Skip_Nodes and WorkManager.attemptWork(2, "node skip") then
                 local path = G.Navigation.path
                 local pathLength = #path
@@ -145,38 +128,48 @@ local function OnCreateMove(userCmd)
                 if pathLength >= 2 then
                     local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
                     local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
-                    local currentToPlayerDist = (LocalOrigin - currentNode.pos):Length()
 
-                    -- Real-time check for the next node
-                    local nextToPlayerDist = (LocalOrigin - nextNode.pos):Length()
-                    if nextToPlayerDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
-                        if Common.isWalkable(currentNode.pos, nextNode.pos) then
-                            Log:Info("Instant skipping to next node %d", nextNode.id)
-                            Navigation.MoveToNextNode()  -- Skip to the next node
+                    -- Ensure currentNode and nextNode are valid
+                    if currentNode and nextNode then
+                        -- Get the distances: (1) currentNode to nextNode, and (2) player to nextNode
+                        local currentToNextDist = (currentNode.pos - nextNode.pos):Length()
+                        local playerToNextDist = (LocalOrigin - nextNode.pos):Length()
+
+                        -- Perform a trace check (line-of-sight) to ensure there's no obstacle between the player and the next node
+                        if playerToNextDist < currentToNextDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
+                            -- Additionally, check if the path between the current node and the next node is walkable
+                            if Common.isWalkable(currentNode.pos, nextNode.pos) then
+                                Log:Info("Player is closer to the next node and path is clear. Skipping current node %d and moving to next node %d", currentNode.id, nextNode.id)
+                                Navigation.MoveToNextNode()  -- Skip to the next node
+                            else
+                                Log:Warn("Path between current node %d and next node %d is not walkable, not skipping.", currentNode.id, nextNode.id)
+                            end
                         end
                     end
 
+
                     -- Full path check every 16 ticks
-                    if WorkManager.attemptWork(16, "node skip all") then
-                        local closestNode = currentNode
-                        for i = pathLength - 1, 1, -1 do
+                    if WorkManager.attemptWork(33, "node skip all") then
+                        local closestNodeIndex = #G.Navigation.path
+                        local currentToPlayerDist = 1000
+
+                        -- Loop through nodes to find the closest walkable node
+                        for i = #G.Navigation.path - 1, 1, -1 do
                             local node = G.Navigation.path[i]
                             local playerToNodeDist = (LocalOrigin - node.pos):Length()
 
-                            -- Find closest walkable node in the entire path
+                            -- Check if it's closer and walkable
                             if playerToNodeDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, node.pos) then
-                                if Common.isWalkable(currentNode.pos, node.pos) then
-                                    closestNode = node
+                                if Common.isWalkable(G.Navigation.path[#G.Navigation.path].pos, node.pos) then
+                                    closestNodeIndex = i
                                     currentToPlayerDist = playerToNodeDist
                                 end
                             end
                         end
 
-                        -- If a closer node is found, skip to it
-                        if closestNode ~= currentNode then
-                            Log:Info("Skipping to closer node %d", closestNode.id)
-                            G.Navigation.path[#G.Navigation.path] = closestNode
-                            Navigation.MoveToNextNode()  -- Skip to the closest node
+                        -- Skip to the closest node if it's not the current node
+                        if closestNodeIndex ~= #G.Navigation.path then
+                            Navigation.SkipToNode(closestNodeIndex)
                         end
                     end
                 end
@@ -317,10 +310,6 @@ local function OnDrawModel(ctx)
         G.World.healthPacks[entity:GetIndex()] = entity:GetAbsOrigin()
     end
 end
-
---inicial setup
-Log:Info("New map detected, reloading nav file...")
-Setup.SetupNavigation()
 
 callbacks.Unregister("CreateMove", "LNX.Lmaobot.CreateMove")
 callbacks.Unregister("DrawModel", "LNX.Lmaobot.DrawModel")

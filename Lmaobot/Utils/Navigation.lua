@@ -377,13 +377,6 @@ local function canTraceDown(startPos, endPos)
     return traceResult.fraction == 1
 end
 
--- Helper function to validate horizontal and vertical checks
-local function IsValidConnection(node, targetNode)
-    local horizontalCheck = (targetNode.pos - node.pos):Length() < 750
-    local verticalDiff = targetNode.pos.z - node.pos.z
-    return horizontalCheck and (verticalDiff <= 72 or verticalDiff < 0)
-end
-
 -- Returns all adjacent nodes of the given node, including visible ones
 ---@param node Node
 ---@param nodes Node[]
@@ -404,9 +397,7 @@ local function GetAdjacentNodes(node, nodes)
         if conDir and conDir.connections then
             for _, con in pairs(conDir.connections) do
                 local conNode = nodes[con]
-                if conNode and IsValidConnection(node, conNode) then
-                    table.insert(adjacentNodes, conNode)
-                end
+                table.insert(adjacentNodes, conNode)
             end
         else
             print(string.format("Warning: No connections for direction %d of node %d.", dir, node.id))
@@ -445,6 +436,30 @@ function Navigation.FindPath(startNode, goalNode)
         Log:Error("Failed to find path from %d to %d!", startNode.id, goalNode.id)
     else
         Log:Info("Path found from %d to %d with %d nodes", startNode.id, goalNode.id, #G.Navigation.path)
+    end
+end
+
+function Navigation.SkipToNode(nodeIndexFromStart)
+    Navigation.ResetTickTimer()
+
+    if G.Navigation.path and #G.Navigation.path > 0 then
+        -- Ensure nodeIndexFromStart is within the bounds of the path
+        local targetIndex = math.max(1, math.min(#G.Navigation.path, nodeIndexFromStart))
+
+        -- Set the currentNode and currentNodePos to the target node
+        G.Navigation.currentNode = G.Navigation.path[targetIndex]
+        G.Navigation.currentNodePos = G.Navigation.currentNode.pos
+
+        -- Remove all nodes after the targetIndex
+        for i = #G.Navigation.path, targetIndex + 1, -1 do
+            table.remove(G.Navigation.path)
+        end
+
+        G.Navigation.currentNodeIndex = targetIndex
+    else
+        -- Clear the current node and position if no path exists
+        G.Navigation.currentNode = nil
+        G.Navigation.currentNodePos = nil
     end
 end
 

@@ -153,10 +153,14 @@ function SetupModule.SetupNavigation()
     Log:Info("Navigation setup initiated.")
 end
 
+--inicial setup
+SetupModule.SetupNavigation()
+
+
 ---@param event GameEvent
 local function OnGameEvent(event)
-    local eventName = event:GetName()
     SetupModule.checkNavFileGeneration()
+    local eventName = event:GetName()
     if eventName == "game_newmap" then
         Log:Info("New map detected, reloading nav file...")
         SetupModule.SetupNavigation()
@@ -166,5 +170,8 @@ end
 callbacks.Unregister("FireGameEvent", "LNX.Lmaobot.FireGameEvent")
 callbacks.Register("FireGameEvent", "LNX.Lmaobot.FireGameEvent", OnGameEvent)
 
+
+--cleanup before loading rest of code
+collectgarbage("collect")
 
 return SetupModule
