@@ -64,6 +64,7 @@ G.Navigation = {
     currentNodePos = nil,
     currentNodeinPath = 1000,
     currentNodeTicks = 0,
+    nodesCount = 0,
 }
 
 G.Tasks = {

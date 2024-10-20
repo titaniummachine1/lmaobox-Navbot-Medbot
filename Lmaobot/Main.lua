@@ -269,7 +269,7 @@ local function OnCreateMove(userCmd)
             elseif mapName:find("ctf_") then
                 goalNode = findFlagGoal()
             else
-                Log:Warn("Unsupported gamemode. Try CTF, PL, or PLR.")
+                --Log:Warn("Unsupported gamemode. Try CTF, PL, or PLR.")
                 return
             end
         elseif currentTask == "Health" then

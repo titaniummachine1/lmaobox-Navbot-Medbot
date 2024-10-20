@@ -138,11 +138,6 @@ local function OnDrawMenu()
             ImMenu.BeginFrame(1)
                 G.Menu.Main.smoothFactor = ImMenu.Slider("Smooth Factor", G.Menu.Main.smoothFactor, 0.01, 20, 0.01)
             ImMenu.EndFrame()
-
-              -- Slider for loading progress (non-modifiable)
-            ImMenu.BeginFrame(1)
-                ImMenu.Slider("Loading Progress", G.Menu.Main.Loading, 0, 100, nil, true) -- Last argument makes it read-only
-            ImMenu.EndFrame()
         end
 
 
@@ -167,6 +162,15 @@ local function OnDrawMenu()
                 G.Menu.Movement.Smart_Jump = ImMenu.Checkbox("Smart Jump", G.Menu.Movement.Smart_Jump)
             ImMenu.EndFrame()
         end
+        ImMenu.End()
+    end
+
+    if G.Menu.Main.Loading < 100 and ImMenu and ImMenu.Begin("Loading Resources", true) then
+        -- Slider for loading progress (non-modifiable)
+        ImMenu.BeginFrame()
+            ImMenu.Slider("Loading Progress", G.Menu.Main.Loading, 0, 100, nil, true) -- Last argument makes it read-only
+        ImMenu.EndFrame()
+
         ImMenu.End()
     end
 end
