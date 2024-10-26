@@ -8,6 +8,7 @@ local Common = require("Lmaobot.Common")
 local G = require("Lmaobot.Utils.Globals")
 local SourceNav = require("Lmaobot.Utils.SourceNav")
 local Node = require("Lmaobot.Utils.Node")  -- Using Node module
+local Navigation = require("Lmaobot.Utils.Navigation")
 local loader = require("Lmaobot.Utils.loader")
 local Log = Common.Log
 
@@ -58,11 +59,11 @@ function SetupModule.processNavData(navData)
     local totalNodes = 0
 
     for _, area in ipairs(navData.areas) do
-        navNodes[area.id] = Node.createNode(area)  -- Use Node module for node creation
+        navNodes[area.id] = Node.create(area)  -- Use Node module for node creation
         totalNodes = totalNodes + 1
     end
 
-    Node.setNodes(navNodes)  -- Use Node module to set nodes globally
+    Node.SetNodes(navNodes)  -- Use Node module to set nodes globally
     Log:Info("Processed %d nodes in nav data.", totalNodes)
     return navNodes
 end
@@ -92,7 +93,7 @@ function SetupModule.processNavDataAndSet(navData)
         Log:Error("No nodes found in nav data after processing.")
     else
         Log:Info("Parsed %d areas from nav file.", #navNodes)
-        Node.setNodes(navNodes)  -- Set nodes in global state
+        Node.SetNodes(navNodes)  -- Set nodes in global state
         Log:Info("Nav nodes set and fixed.")
     end
 end
@@ -133,7 +134,7 @@ function SetupModule.LoadNavFile()
     local navFile = string.gsub(mapFile, "%.bsp$", ".nav")
     Log:Info("Loading nav file for current map: %s", navFile)
     SetupModule.LoadFile(navFile)
-    Node.setCurrentPath({}) -- Clear path after loading nav file
+    Navigation.ClearPath() -- Clear path after loading nav file
     Log:Info("Path cleared after loading nav file.")
 end
 
@@ -205,7 +206,7 @@ local function startNodeProcessingTask(nodes)
 end
 
 -- Call this function to start processing nodes
-startNodeProcessingTask(Node.getNodes())  -- Use Node.getNodes() to get the nodes
+--startNodeProcessingTask(Node.GetNodes())  -- Use Node.getNodes() to get the nodes
 
 -- OnDraw callback to process batches of visible nodes
 local function OnDraw()
@@ -215,8 +216,8 @@ local function OnDraw()
 end
 
 -- Register the OnDraw callback to be called each frame
-callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
-callbacks.Register("Draw", "ProcessVisibleNodesBatch", OnDraw)
+--callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
+--callbacks.Register("Draw", "ProcessVisibleNodesBatch", OnDraw)
 
 ---@param event GameEvent
 local function OnGameEvent(event)
@@ -226,10 +227,9 @@ local function OnGameEvent(event)
         SetupModule.SetupNavigation()
 
         processedNodes = 0
-        startNodeProcessingTask(Node.getNodes())  -- Restart node processing after map reload
+        --startNodeProcessingTask(Node.getNodes())  -- Restart node processing after map reload
 
-        Node.setCurrentPath({})  -- Clear the path using Node module
-        callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
+        Navigation.ClearPath()  -- Clear the path using Node module
     end
 end
 

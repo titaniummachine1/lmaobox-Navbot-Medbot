@@ -3,6 +3,32 @@ local Node = {}
 local Common = require("Lmaobot.Common")
 local G = require("Lmaobot.Utils.Globals")
 
+
+-- Clear all nodes
+function Node.clearNodes()
+    G.Navigation.nodes = {}
+    G.Navigation.nodesCount = 0
+end
+
+-- Set new nodes into the global state
+function Node.SetNodes(nodes)
+    G.Navigation.nodes = nodes
+end
+
+-- Get all nodes from the global state
+function Node.GetNodes()
+    return G.Navigation.nodes
+end
+
+-- Get a node by its ID
+function Node.GetNodeByID(id)
+    return G.Navigation.nodes[id]
+end
+
+function Node.currentNodePos()
+    return G.Navigation.currentNodePos
+end
+
 -- Function to process a single node and calculate its position
 function Node.create(area)
     local cX = (area.north_west.x + area.south_east.x) / 2
@@ -17,28 +43,27 @@ function Node.create(area)
             nw = area.north_west,
             se = area.south_east,
         },
-        visible_areas = area.visible_areas or {}  -- Handle missing visible areas
     }
 end
 
--- Function to process connections for a node
-function Node.processConnections(node, nodes)
-    if node.visible_areas then
-        for _, visible in ipairs(node.visible_areas) do
-            local visNode = nodes[visible.id]
-            if visNode and Common.isWalkable(node.pos, visNode.pos) then
-                node.c = node.c or {}
-                node.c[5] = node.c[5] or { count = 0, connections = {} }
-                table.insert(node.c[5].connections, visNode.id)
-                node.c[5].count = node.c[5].count + 1
-            end
+-- Function to process connections for a node, checking against all nodes
+function Node.processConnections(node)
+    node.c = node.c or {}  -- Initialize connections table
+    local nodes = Node.GetNodes()
+    for _, targetNode in pairs(nodes) do
+        if targetNode.id ~= node.id and Common.isWalkable(node.pos, targetNode.pos) then
+            -- Use a specific direction (e.g., 5) for adding connections
+            node.c[5] = node.c[5] or { count = 0, connections = {} }
+            table.insert(node.c[5].connections, targetNode.id)
+            node.c[5].count = node.c[5].count + 1
         end
-        node.visible_areas = nil  -- Clear visible_areas once processed
     end
 end
 
 -- Function to remove a connection between two nodes
-function Node.removeConnection(nodeA, nodeB, nodes)
+function Node.RemoveConnection(nodeA, nodeB)
+    local nodes = Node.GetNodes()
+    if not nodes or not nodes[nodeA.id] or not nodes[nodeB.id] then return end
     local nodeAGlobal = nodes[nodeA.id]
     local nodeBGlobal = nodes[nodeB.id]
 
@@ -62,10 +87,11 @@ end
 ---@param pos Vector3|{ x:number, y:number, z:number }
 ---@return Node
 function Node.GetClosest(pos)
-    local closestNode = {}
     local closestDist = math.huge
+    local nodes = Node.GetNodes()
+    local closestNode = {}
 
-    for _, node in pairs(G.Navigation.nodes or {}) do
+    for _, node in pairs(nodes) do
         if node and node.pos then
             local dist = (node.pos - pos):Length()
             if dist < closestDist and Common.isWalkable(pos, node.pos)  then
@@ -81,7 +107,8 @@ function Node.GetClosest(pos)
 end
 
 -- Function to reindex nodes sequentially
-function Node.reindexNodesSequentially(nodes)
+function Node.reindexNodesSequentially()
+    local nodes = Node.GetNodes()
     local newNodes = {}
     local idMap = {}  -- Map old IDs to new sequential IDs
     local index = 1   -- Start with the first sequential ID
@@ -108,27 +135,6 @@ function Node.reindexNodesSequentially(nodes)
     end
 
     return newNodes  -- Return the new table with sequential IDs
-end
-
--- Clear all nodes
-function Node.clearNodes()
-    G.Navigation.nodes = {}
-    G.Navigation.nodesCount = 0
-end
-
--- Set new nodes into the global state
-function Node.SetNodes(nodes)
-    G.Navigation.nodes = nodes
-end
-
--- Get all nodes from the global state
-function Node.GetNodes()
-    return G.Navigation.nodes
-end
-
--- Get a node by its ID
-function Node.GetNodeByID(id)
-    return G.Navigation.nodes[id]
 end
 
 return Node

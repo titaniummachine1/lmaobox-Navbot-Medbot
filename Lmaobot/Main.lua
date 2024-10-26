@@ -4,7 +4,9 @@
 
 --[[ Imports ]]
 local G = require("Lmaobot.Utils.Globals")
+local Node = require("Lmaobot.Utils.Node")  -- Using Node module
 local Common = require("Lmaobot.Common")
+
 require("Lmaobot.Utils.Commands")
 require("Lmaobot.Modules.SmartJump")
 require("Lmaobot.Visuals")
@@ -41,9 +43,114 @@ local function HealthLogic(pLocal)
     end
 end
 
+-- Helper function to smoothly adjust view angles
+local function smoothViewAngles(userCmd, targetAngles)
+    local currentAngles = userCmd.viewangles
+    local deltaAngles = { x = targetAngles.x - currentAngles.x, y = targetAngles.y - currentAngles.y }
+    deltaAngles.y = ((deltaAngles.y + 180) % 360) - 180  -- Normalize to [-180, 180]
+
+    return EulerAngles(
+        currentAngles.x + deltaAngles.x * 0.05,
+        currentAngles.y + deltaAngles.y * G.Menu.Main.smoothFactor,
+        0
+    )
+end
+
+-- Helper function to get eye position and calculate view angles towards the current node
+local function getViewAnglesToNode(pLocalWrapped, targetPos)
+    local eyePos = pLocalWrapped:GetEyePos()
+    if not eyePos then
+        Log:Warn("Eye position is nil.")
+        return nil
+    end
+    return Lib.Utils.Math.PositionAngles(eyePos, targetPos)
+end
+
+-- Main function to handle path-walking view adjustments
+local function handlePathWalkingView(userCmd)
+    if not (G.Navigation.currentNodePos and G.Menu.Movement.lookatpath) then
+        return
+    end
+
+    local pLocalWrapped = WPlayer.GetLocal()
+    if not pLocalWrapped then
+        Log:Warn("Failed to wrap local player.")
+        return
+    end
+
+    local angles = getViewAnglesToNode(pLocalWrapped, G.Navigation.currentNodePos)
+    if not angles then return end
+
+    angles.x = 0  -- Keep horizontal view steady
+    if G.Menu.Movement.smoothLookAtPath then
+        angles = smoothViewAngles(userCmd, angles)
+    end
+    engine.SetViewAngles(angles)
+end
+
+-- Helper to check if we're close enough to move to the next node
+local function shouldMoveToNextNode(horizontalDist, verticalDist)
+    return (horizontalDist < G.Misc.NodeTouchDistance) and (verticalDist <= G.Misc.NodeTouchHeight)
+end
+
+-- Helper to determine if we can skip to the next node in the path
+local function shouldSkipToNextNode(currentNode, nextNode, LocalOrigin)
+    local currentToNextDist = (currentNode.pos - nextNode.pos):Length()
+    local playerToNextDist = (LocalOrigin - nextNode.pos):Length()
+    return playerToNextDist < currentToNextDist
+       and Common.isWalkable(LocalOrigin, nextNode.pos)
+       and Common.isWalkable(currentNode.pos, nextNode.pos)
+end
+
+-- Skips to the closest node if it's closer to the player and walkable
+local function skipToClosestWalkableNode(LocalOrigin)
+    local closestNodeIndex = #G.Navigation.path
+    local currentToPlayerDist = 1000
+
+    for i = #G.Navigation.path - 1, 1, -1 do
+        local node = G.Navigation.path[i]
+        local playerToNodeDist = (LocalOrigin - node.pos):Length()
+
+        if playerToNodeDist < currentToPlayerDist 
+           and Common.isWalkable(LocalOrigin, node.pos) 
+           and Common.isWalkable(G.Navigation.path[#G.Navigation.path].pos, node.pos) then
+            closestNodeIndex = i
+            currentToPlayerDist = playerToNodeDist
+        end
+    end
+
+    if closestNodeIndex ~= #G.Navigation.path then
+        Navigation.SkipToNode(closestNodeIndex)
+    end
+end
+
+-- Helper to attempt jumping if stuck for too long
+local function attemptJumpIfStuck(userCmd)
+    if G.Navigation.currentNodeTicks > 66 and WorkManager.attemptWork(66, "Unstuck_Jump") then
+        userCmd:SetButtons(userCmd.buttons | IN_JUMP)
+        Log:Info("Attempting to jump to get unstuck.")
+    end
+end
+
+-- Helper to remove blocked connections and re-path if path is still blocked after multiple attempts
+local function attemptToRemoveBlockedConnection()
+    local currentNode = G.Navigation.path[#G.Navigation.path]
+    local nextNode = G.Navigation.path[#G.Navigation.path - 1]
+    if currentNode and nextNode then
+        Log:Warn("Path blocked, removing connection between node %d and node %d", currentNode.id, nextNode.id)
+        Node.RemoveConnection(currentNode, nextNode)
+        Navigation.ClearPath()
+        Navigation.ResetTickTimer()
+        Log:Info("Connection removed, re-pathing initiated.")
+    else
+        Log:Warn("Unable to remove connection: one or more nodes are nil.")
+    end
+end
+
 ---@param userCmd UserCmd
 local function OnCreateMove(userCmd)
     local pLocal = entities.GetLocalPlayer()
+    G.pLocal.entity = pLocal
     if not pLocal or not pLocal:IsAlive() then
         Navigation.ClearPath()
         return
@@ -69,37 +176,10 @@ local function OnCreateMove(userCmd)
     end
 
     if G.State == G.StateDefinition.PathWalking then
-        if G.Navigation.currentNodePos then
-            if G.Menu.Movement.lookatpath then
-                local pLocalWrapped = WPlayer.GetLocal()
-                if pLocalWrapped then
-                    local eyePos = pLocalWrapped:GetEyePos()
-                    if eyePos then
-                        local angles = Lib.Utils.Math.PositionAngles(eyePos, G.Navigation.currentNodePos)
-                        angles.x = 0
+        handlePathWalkingView(userCmd) --viewangle manager
 
-                        if G.Menu.Movement.smoothLookAtPath then
-                            local currentAngles = userCmd.viewangles
-                            local deltaAngles = { x = angles.x - currentAngles.x, y = angles.y - currentAngles.y }
-
-                            deltaAngles.y = ((deltaAngles.y + 180) % 360) - 180
-
-                            angles = EulerAngles(currentAngles.x + deltaAngles.x * 0.05, currentAngles.y + deltaAngles.y * G.Menu.Main.smoothFactor, 0)
-                        end
-                        engine.SetViewAngles(angles)
-                    else
-                        Log:Warn("Eye position is nil.")
-                    end
-                else
-                    Log:Warn("Failed to wrap local player.")
-                end
-            end
-        else
-            Log:Warn("Current node position is nil.")
-        end
-
-        local LocalOrigin = G.pLocal.Origin or Vector3(0, 0, 0)
-        local nodePos = G.Navigation.currentNodePos or Vector3(0, 0, 0)
+        local LocalOrigin = G.pLocal.Origin
+        local nodePos = Node.currentNodePos()
         local horizontalDist = math.abs(LocalOrigin.x - nodePos.x) + math.abs(LocalOrigin.y - nodePos.y)
         local verticalDist = math.abs(LocalOrigin.z - nodePos.z)
 
@@ -107,11 +187,9 @@ local function OnCreateMove(userCmd)
             Common.WalkTo(userCmd, pLocal, nodePos)
         end
 
-        if (horizontalDist < G.Misc.NodeTouchDistance) and verticalDist <= G.Misc.NodeTouchHeight then
-            -- Move to the next node when close enough
-            Navigation.MoveToNextNode()  -- Will remove the last node in the path
-            Navigation.ResetTickTimer()
-            -- Check if the path is empty after removing the node
+        
+        if shouldMoveToNextNode(horizontalDist, verticalDist) then
+            Navigation.MoveToNextNode()
             if not G.Navigation.path or #G.Navigation.path == 0 then
                 Navigation.ClearPath()
                 Log:Info("Reached end of path.")
@@ -119,96 +197,36 @@ local function OnCreateMove(userCmd)
                 return
             end
         else
-            -- Node skipping logic (check if player is closer to the next node than the current node is)
             if G.Menu.Main.Skip_Nodes then
                 local path = G.Navigation.path
-                local pathLength = #path
-
-                -- Ensure there are at least two nodes in the path to perform skipping
-                if pathLength >= 2 then
-                    local currentNode = G.Navigation.path[#G.Navigation.path]  -- Current node (last node in path)
-                    local nextNode = G.Navigation.path[#G.Navigation.path - 1]  -- Next node (second last node in path)
-
-                    -- Ensure currentNode and nextNode are valid
-                    if currentNode and nextNode then
-                        -- Get the distances: (1) currentNode to nextNode, and (2) player to nextNode
-                        local currentToNextDist = (currentNode.pos - nextNode.pos):Length()
-                        local playerToNextDist = (LocalOrigin - nextNode.pos):Length()
-
-                        -- Perform a trace check (line-of-sight) to ensure there's no obstacle between the player and the next node
-                        if playerToNextDist < currentToNextDist and Common.isWalkable(LocalOrigin, nextNode.pos) then
-                            -- Additionally, check if the path between the current node and the next node is walkable
-                            if Common.isWalkable(currentNode.pos, nextNode.pos) then
-                                Log:Info("Player is closer to the next node and path is clear. Skipping current node %d and moving to next node %d", currentNode.id, nextNode.id)
-                                Navigation.MoveToNextNode()  -- Skip to the next node
-                            else
-                                Log:Warn("Path between current node %d and next node %d is not walkable, not skipping.", currentNode.id, nextNode.id)
-                            end
-                        end
+                if path and #path >= 2 then
+                    local currentNode = path[#path]
+                    local nextNode = path[#path - 1]
+                    
+                    if currentNode and nextNode and shouldSkipToNextNode(currentNode, nextNode, LocalOrigin) then
+                        Log:Info("Skipping to next node %d", nextNode.id)
+                        Navigation.MoveToNextNode()
+                    else
+                        Log:Warn("Path to next node %d is blocked.", nextNode.id)
                     end
 
-
-                    -- Full path check every 16 ticks
-                    if WorkManager.attemptWork(7, "node skip all") then
-                        local closestNodeIndex = #G.Navigation.path
-                        local currentToPlayerDist = 1000
-
-                        -- Loop through nodes to find the closest walkable node
-                        for i = #G.Navigation.path - 1, 1, -1 do
-                            local node = G.Navigation.path[i]
-                            local playerToNodeDist = (LocalOrigin - node.pos):Length()
-
-                            -- Check if it's closer and walkable
-                            if playerToNodeDist < currentToPlayerDist and Common.isWalkable(LocalOrigin, node.pos) then
-                                if Common.isWalkable(G.Navigation.path[#G.Navigation.path].pos, node.pos) then
-                                    closestNodeIndex = i
-                                    currentToPlayerDist = playerToNodeDist
-                                end
-                            end
-                        end
-
-                        -- Skip to the closest node if it's not the current node
-                        if closestNodeIndex ~= #G.Navigation.path then
-                            Navigation.SkipToNode(closestNodeIndex)
-                        end
+                    if WorkManager.attemptWork(16, "node skip all") then
+                        skipToClosestWalkableNode(LocalOrigin)
                     end
                 end
             end
-            -- Increment movement timer for the current node
             G.Navigation.currentNodeTicks = (G.Navigation.currentNodeTicks or 0) + 1
         end
 
-
         if (G.pLocal.flags & FL_ONGROUND == 1) or (pLocal:EstimateAbsVelocity():Length() < 50) then
-            -- If bot is on the ground or moving very slowly, attempt to get unstuck
             if not Common.isWalkable(LocalOrigin, nodePos) then
-                -- Attempt to jump if stuck for more than 66 ticks
-                if G.Navigation.currentNodeTicks > 66 and WorkManager.attemptWork(66, "Unstuck_Jump") then
-                    -- Basic auto-jump when on ground
-                    userCmd:SetButtons(userCmd.buttons & (~IN_DUCK))
-                    userCmd:SetButtons(userCmd.buttons | IN_JUMP)
-                    Log:Info("Attempting to jump to get unstuck.")
-                end
-            end
+                attemptJumpIfStuck(userCmd)  -- Try jumping to get unstuck
 
-            -- If still stuck after multiple attempts, remove the connection and re-path
-            if G.Navigation.currentNodeTicks > 244 and WorkManager.attemptWork(244, "get unstuck") then
-                if not Common.isWalkable(LocalOrigin, nodePos) then
-                    local currentNode = G.Navigation.path[#G.Navigation.path]
-                    local NextNode = G.Navigation.path[#G.Navigation.path - 1]
-                    if currentNode and NextNode then
-                        Log:Warn("Path blocked, removing connection between node %d and node %d", currentNode.id, NextNode.id)
-                        -- Remove the connection between the previousNode and nodeBeforePrevious
-                        Navigation.RemoveConnection(currentNode, NextNode)
-                        Navigation.ClearPath()
-                        Navigation.ResetTickTimer()
-                        Log:Info("Connection removed, re-pathing initiated.")
-                    else
-                        Log:Warn("Previous node or node before previous is nil, unable to remove connection.")
-                    end
-                else
-                    -- If path is not blocked but still stuck, clear and re-path
-                    if not WorkManager.attemptWork(5, "pathCheck") then
+                if G.Navigation.currentNodeTicks > 244 then
+                    -- Remove blocked path or re-path if stuck
+                    if not Common.isWalkable(LocalOrigin, nodePos) then
+                        attemptToRemoveBlockedConnection()
+                    elseif not WorkManager.attemptWork(5, "pathCheck") then
                         Log:Warn("Path is stuck but walkable, re-pathing...")
                         Navigation.ClearPath()
                         Navigation.ResetTickTimer()
@@ -218,7 +236,7 @@ local function OnCreateMove(userCmd)
         end
     elseif G.State == G.StateDefinition.Pathfinding then
         local LocalOrigin = G.pLocal.Origin or Vector3(0, 0, 0)
-        local startNode = Navigation.GetClosestNode(LocalOrigin)
+        local startNode = Node.GetClosest(LocalOrigin)
         if not startNode then
             Log:Warn("Could not find start node.")
             return
@@ -231,7 +249,7 @@ local function OnCreateMove(userCmd)
             G.World.payloads = entities.FindByClass("CObjectCartDispenser")
             for _, entity in pairs(G.World.payloads or {}) do
                 if entity:GetTeamNumber() == pLocal:GetTeamNumber() then
-                    return Navigation.GetClosestNode(entity:GetAbsOrigin())
+                    return Node.GetClosest(entity:GetAbsOrigin())
                 end
             end
         end
@@ -242,7 +260,7 @@ local function OnCreateMove(userCmd)
             for _, entity in pairs(G.World.flags or {}) do
                 local myTeam = entity:GetTeamNumber() == pLocal:GetTeamNumber()
                 if (myItem > 0 and myTeam) or (myItem <= 0 and not myTeam) then
-                    return Navigation.GetClosestNode(entity:GetAbsOrigin())
+                    return Node.GetClosest(entity:GetAbsOrigin())
                 end
             end
         end
@@ -251,7 +269,7 @@ local function OnCreateMove(userCmd)
             local closestDist = math.huge
             local closestNode = nil
             for _, pos in pairs(G.World.healthPacks or {}) do
-                local healthNode = Navigation.GetClosestNode(pos)
+                local healthNode = Node.GetClosest(pos)
                 if healthNode then
                     local dist = (LocalOrigin - pos):Length()
                     if dist < closestDist then

@@ -125,7 +125,7 @@ local function AdjustVelocity(cmd)
 
     -- Get current velocity
     local velocity = pLocal:EstimateAbsVelocity()
-    local intendedSpeed = math.max(1, velocity:Length())
+    local intendedSpeed = math.max(10, velocity:Length())
 
     -- Adjust velocity to match intended direction and speed
     if onGround then
