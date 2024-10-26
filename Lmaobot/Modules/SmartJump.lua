@@ -3,7 +3,6 @@ local libLoaded, lnxLib = pcall(require, "lnxLib")
 assert(libLoaded, "lnxLib not found, please install it!")
 
 local G = require("Lmaobot.Utils.Globals")
-if not G.Menu.Movement.Smart_Jump then return end
 
 local Math = lnxLib.Utils.Math
 local Prediction = lnxLib.TF2.Prediction

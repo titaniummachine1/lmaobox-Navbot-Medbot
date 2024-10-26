@@ -43,21 +43,6 @@ function Navigation.RemoveConnection(nodeA, nodeB)
             end
         end
     end
-
-    -- Remove reverse connection from nodeB to nodeA
-    for dir = 1, 4 do
-        local conDir = G.Navigation.nodes[nodeB.id].c[dir]
-        if conDir then
-            for i, con in ipairs(conDir.connections) do
-                if con == nodeA.id then
-                    print("Removing reverse connection from node " .. nodeB.id .. " to node " .. nodeA.id)
-                    table.remove(conDir.connections, i)
-                    conDir.count = conDir.count - 1
-                    break  -- Stop after finding and removing the reverse connection
-                end
-            end
-        end
-    end
 end
 
 
@@ -361,7 +346,7 @@ function Navigation.GetClosestNode(pos)
     for _, node in pairs(G.Navigation.nodes or {}) do
         if node and node.pos then
             local dist = (node.pos - pos):Length()
-            if dist < closestDist then
+            if dist < closestDist and Common.isWalkable(pos, node.pos)  then
                 closestNode = node
                 closestDist = dist
             end
@@ -372,55 +357,6 @@ function Navigation.GetClosestNode(pos)
 
     return closestNode
 end
-
--- Perform a trace line down from a given height to check ground position
----@param startPos table The start position of the trace
----@param endPos table The end position of the trace
----@return boolean Whether the trace line reaches the ground at the target position
-local function canTraceDown(startPos, endPos)
-    local traceResult = engine.TraceLine(startPos.pos, endPos.pos, MASK_PLAYERSOLID)
-    return traceResult.fraction == 1
-end
-
-local function isvalid(node, connode)
-    return node and connode and (connode.pos.z - node.pos.z) < 90
-end
-
--- Returns all adjacent nodes of the given node, including visible ones
----@param node Node
----@param nodes Node[]
----@return Node[]
-local function GetAdjacentNodes(node, nodes)
-    local adjacentNodes = {}
-
-    -- Check if node and its connections table exist
-    if not node or not node.c then
-        print("Error: Node or its connections table (c) is missing.")
-        return adjacentNodes
-    end
-
-    -- Iterate through connections (directions 1 to 4)
-    for dir = 1, 27 do
-        if not node.c[dir] then break end
-
-        local conDir = node.c[dir]
-
-        if conDir and conDir.connections then
-            for _, con in pairs(conDir.connections) do
-                local conNode = nodes[con]
-                if conNode and isvalid(node, conNode) then
-                    table.insert(adjacentNodes, conNode)
-                end
-            end
-        else
-            print(string.format("Warning: No connections for direction %d of node %d.", dir, node.id))
-        end
-    end
-
-    return adjacentNodes
-end
-
-
 
 function Navigation.FindPath(startNode, goalNode)
     if not startNode or not startNode.pos then

@@ -7,7 +7,8 @@ SetupModule.__index = SetupModule
 local Common = require("Lmaobot.Common")
 local G = require("Lmaobot.Utils.Globals")
 local SourceNav = require("Lmaobot.Utils.SourceNav")
-local Navigation = require("Lmaobot.Utils.Navigation")
+local Node = require("Lmaobot.Utils.Node")  -- Using Node module
+local loader = require("Lmaobot.Utils.loader")
 local Log = Common.Log
 
 -- Variables to handle asynchronous nav file loading
@@ -51,28 +52,17 @@ function SetupModule.generateNavFile()
     navCheckElapsedTime = 0
 end
 
--- Processes nav data and creates nodes, excluding visible nodes for now
+-- Processes nav data and creates nodes using the Node module
 function SetupModule.processNavData(navData)
     local navNodes = {}
     local totalNodes = 0
 
     for _, area in ipairs(navData.areas) do
-        local cX = (area.north_west.x + area.south_east.x) / 2
-        local cY = (area.north_west.y + area.south_east.y) / 2
-        local cZ = (area.north_west.z + area.south_east.z) / 2
-
-        navNodes[area.id] = {
-            pos = Vector3(cX, cY, cZ),
-            id = area.id,
-            c = area.connections or {},  -- Ensure connections exist
-            nw = area.north_west,
-            se = area.south_east,
-            visible_areas = area.visible_areas or {}  -- Handle missing visible areas
-        }
+        navNodes[area.id] = Node.createNode(area)  -- Use Node module for node creation
         totalNodes = totalNodes + 1
     end
 
-    G.Navigation.nodes = navNodes
+    Node.setNodes(navNodes)  -- Use Node module to set nodes globally
     Log:Info("Processed %d nodes in nav data.", totalNodes)
     return navNodes
 end
@@ -102,7 +92,7 @@ function SetupModule.processNavDataAndSet(navData)
         Log:Error("No nodes found in nav data after processing.")
     else
         Log:Info("Parsed %d areas from nav file.", #navNodes)
-        G.Navigation.nodes = navNodes
+        Node.setNodes(navNodes)  -- Set nodes in global state
         Log:Info("Nav nodes set and fixed.")
     end
 end
@@ -143,9 +133,13 @@ function SetupModule.LoadNavFile()
     local navFile = string.gsub(mapFile, "%.bsp$", ".nav")
     Log:Info("Loading nav file for current map: %s", navFile)
     SetupModule.LoadFile(navFile)
-    G.Navigation.path = {} -- Clear path after loading nav file
+    Node.setCurrentPath({}) -- Clear path after loading nav file
     Log:Info("Path cleared after loading nav file.")
 end
+
+-- Total number of nodes and other variables
+local processedNodes = 0
+local totalNodes = 0
 
 -- Function to setup the navigation by loading the navigation file
 function SetupModule.SetupNavigation()
@@ -154,91 +148,75 @@ function SetupModule.SetupNavigation()
     Common.Reset("Objective") -- Reset any ongoing objective
     Log:Info("Navigation setup initiated.")
 
-    -- Initialize node count and max ID tracking
-    local countNodes = 0
-    local highestID = 0
-
-    -- Iterate through nodes to count and find the highest ID
-    for id, node in pairs(G.Navigation.nodes) do
-        countNodes = countNodes + 1
-        if tonumber(id) > highestID then  -- Ensure 'id' is a number
-            highestID = tonumber(id)
-        end
+    --reindex all nodes
+    G.Navigation.nodes = Node.reindexNodesSequentially(G.Navigation.nodes)
+    
+    -- Counting total nodes using `table.count` for tables with non-sequential keys
+    totalNodes = 0
+    for _, _ in pairs(G.Navigation.nodes) do
+        totalNodes = totalNodes + 1
     end
 
-    -- Store results in G.Navigation
-    G.Navigation.nodesCount = highestID
-
-    Log:Info(string.format("Total nodes: %d", highestID))
+    Log:Info(string.format("Total nodes: %d",  totalNodes))
 end
-
-
 
 -- Initial setup
 SetupModule.SetupNavigation()
 
-local totalNodes = G.Navigation.nodesCount
-local processedNodes = 0
-local batchSize = 20  -- Smaller batch size for more frequent updates
+-- Function to process a single node and its visible areas
+local function processSingleNode(node, nodes)
+    Node.processConnections(node, nodes)  -- Use Node module for connection processing
+end
 
+-- Main batch processing function
 local function processVisibleNodesBatch(nodes)
-    local processedCount = 0
-    local totalProcessed = true  -- Track if all nodes have been processed
+    local processedCount = 0  -- Track nodes processed within this batch
 
+    -- Iterate through nodes
     for id, node in pairs(nodes) do
         if processedNodes >= totalNodes then
-            break  -- Exit loop if we've already processed all nodes
+            return true  -- All nodes processed, task is complete
         end
 
-        processedCount = processedCount + 1
-        processedNodes = processedNodes + 1
+        -- Process a single node
+        processSingleNode(node, nodes)
 
-        -- Calculate progress and clamp to 2 decimal places
+        -- Update progress bar and clamp to 2 decimal places
+        processedNodes = processedNodes + 1
         G.Menu.Main.Loading = tonumber(string.format("%.2f", math.min((processedNodes / totalNodes) * 100, 100)))
 
-        if processedCount >= batchSize then
-            return false  -- Stop processing for this frame, more to process
-        end
+        processedCount = processedCount + 1
 
-        if node.visible_areas then
-            totalProcessed = false  -- We have visible nodes left to process
-            for _, visible in ipairs(node.visible_areas) do
-                local visNode = nodes[visible.id]
-                if visNode then
-                    node.c = node.c or {}
-                    node.c[5] = node.c[5] or { count = 0, connections = {} }
-                    table.insert(node.c[5].connections, visNode.id)
-                    node.c[5].count = node.c[5].count + 1
-                end
-            end
-            node.visible_areas = nil  -- Clear visible_areas once processed
+        -- Check if batch size limit is reached
+        if processedCount >= loader.batch_size then
+            return false  -- Yield control back to the loader
         end
     end
 
-    -- Check if we’ve processed all nodes and adjust accordingly
-    if processedNodes >= totalNodes then
-        return true  -- Mark that processing is complete
-    else
-        return totalProcessed  -- Return true if all nodes are processed
-    end
+    -- Return true if all nodes have been processed
+    return processedNodes >= totalNodes
 end
+
+-- Function to initiate the node processing task with the loader
+local function startNodeProcessingTask(nodes)
+    loader.create(function()
+        return processVisibleNodesBatch(nodes)
+    end)
+end
+
+-- Call this function to start processing nodes
+startNodeProcessingTask(Node.getNodes())  -- Use Node.getNodes() to get the nodes
 
 -- OnDraw callback to process batches of visible nodes
 local function OnDraw()
-    local allProcessed = processVisibleNodesBatch(G.Navigation.nodes)
-
-    if allProcessed then
-        -- All visible nodes have been processed, clear path and trigger re-pathing
-        Log:Info("All visible nodes processed, repathing...")
-        Navigation.ClearPath()
-        callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
+    if not loader.task_done then
+        --loader.update()  -- Update the loader each frame to continue processing
     end
 end
 
 -- Register the OnDraw callback to be called each frame
 callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
 callbacks.Register("Draw", "ProcessVisibleNodesBatch", OnDraw)
-
 
 ---@param event GameEvent
 local function OnGameEvent(event)
@@ -247,10 +225,10 @@ local function OnGameEvent(event)
         Log:Info("New map detected, reloading nav file...")
         SetupModule.SetupNavigation()
 
-        totalNodes = G.Navigation.nodesCount
         processedNodes = 0
+        startNodeProcessingTask(Node.getNodes())  -- Restart node processing after map reload
 
-        Navigation.ClearPath()
+        Node.setCurrentPath({})  -- Clear the path using Node module
         callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
     end
 end

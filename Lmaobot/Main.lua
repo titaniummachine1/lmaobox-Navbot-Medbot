@@ -192,7 +192,7 @@ local function OnCreateMove(userCmd)
             end
 
             -- If still stuck after multiple attempts, remove the connection and re-path
-            if WorkManager.attemptWork(177, "get unstuck") then
+            if G.Navigation.currentNodeTicks > 244 and WorkManager.attemptWork(244, "get unstuck") then
                 if not Common.isWalkable(LocalOrigin, nodePos) then
                     local currentNode = G.Navigation.path[#G.Navigation.path]
                     local NextNode = G.Navigation.path[#G.Navigation.path - 1]

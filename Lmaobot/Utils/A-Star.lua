@@ -21,7 +21,46 @@ local function ReconstructPath(current, previous)
     return path
 end
 
-function AStar.Path(startNode, goalNode, nodes, adjacentFun)
+local function isvalid(node, connode)
+    return node and connode and (connode.pos.z - node.pos.z) < 90
+end
+
+-- Returns all adjacent nodes of the given node, including visible ones
+---@param node Node
+---@param nodes Node[]
+---@return Node[]
+local function GetAdjacentNodes(node, nodes)
+    local adjacentNodes = {}
+
+    -- Check if node and its connections table exist
+    if not node or not node.c then
+        print("Error: Node or its connections table (c) is missing.")
+        return adjacentNodes
+    end
+
+    -- Iterate through connections (directions 1 to 4)
+    for dir = 1, 27 do
+        if not node.c[dir] then break end
+
+        local conDir = node.c[dir]
+
+        if conDir and conDir.connections then
+            for _, con in pairs(conDir.connections) do
+                local conNode = nodes[con]
+                if conNode and isvalid(node, conNode) then
+                    table.insert(adjacentNodes, conNode)
+                end
+            end
+        else
+            print(string.format("Warning: No connections for direction %d of node %d.", dir, node.id))
+        end
+    end
+
+    return adjacentNodes
+end
+
+
+function AStar.Path(startNode, goalNode, nodes)
     local openSet = Heap.new()
     local closedSet = {}
     local gScore = {}
@@ -45,7 +84,7 @@ function AStar.Path(startNode, goalNode, nodes, adjacentFun)
 
             closedSet[current.id] = true
 
-            local adjacentNodes = adjacentFun(current, nodes)
+            local adjacentNodes = GetAdjacentNodes(current, nodes)
             for _, neighbor in ipairs(adjacentNodes) do
                 if not closedSet[neighbor.id] then
                     local tentativeGScore = gScore[current.id] + HeuristicCostEstimate(current, neighbor)
