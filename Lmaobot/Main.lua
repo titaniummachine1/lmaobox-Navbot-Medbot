@@ -7,16 +7,10 @@ local G = require("Lmaobot.Utils.Globals")
 local Node = require("Lmaobot.Utils.Node")  -- Using Node module
 local Common = require("Lmaobot.Common")
 
-require("Lmaobot.Utils.Commands")
-require("Lmaobot.Modules.SmartJump")
-require("Lmaobot.Visuals")
-require("Lmaobot.Menu")
+require("Lmaobot.Modules.Setup")
 
 local Navigation = require("Lmaobot.Utils.Navigation")
 local WorkManager = require("Lmaobot.WorkManager")
-
---last to speed up develeopment of stuff
-require("Lmaobot.Modules.Setup")
 
 local Lib = Common.Lib
 local Log = Common.Log

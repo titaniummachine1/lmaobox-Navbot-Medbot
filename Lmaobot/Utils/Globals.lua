@@ -1,7 +1,9 @@
 -- Define the G module
 local G = {}
 
-G.Menu = {
+G.Lua__fileName = GetScriptName():match("([^/\\]+)%.lua$")
+
+G.default_menu = {
     Tabs = {
         Main = true,
         Settings = false,
@@ -10,7 +12,7 @@ G.Menu = {
     },
 
     Main = {
-        Loading = 0,
+        Loading = 100,
         Walking = true,
         Skip_Nodes = true, -- skips nodes if it can go directly to ones closer to target.
         Optymise_Path = true,-- straighten the nodes into segments so you would go in straight line
@@ -31,6 +33,8 @@ G.Menu = {
         Smart_Jump = true, -- jumps perfectly before obstacle to be at peek of jump height when at collision point
     }
 }
+
+G.Menu = G.Default_Menu
 
 G.Default = {
     flags = 1,

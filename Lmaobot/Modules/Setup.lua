@@ -9,8 +9,14 @@ local G = require("Lmaobot.Utils.Globals")
 local SourceNav = require("Lmaobot.Utils.SourceNav")
 local Node = require("Lmaobot.Utils.Node")  -- Using Node module
 local Navigation = require("Lmaobot.Utils.Navigation")
-local loader = require("Lmaobot.Utils.loader")
+--local loader = require("Lmaobot.Utils.loader")
 local Log = Common.Log
+
+require("Lmaobot.Utils.Config")  -- Using Node module
+require("Lmaobot.Utils.Commands")
+require("Lmaobot.Modules.SmartJump")
+require("Lmaobot.Visuals")
+require("Lmaobot.Menu")
 
 -- Variables to handle asynchronous nav file loading
 local isNavGenerationInProgress = false
@@ -195,20 +201,6 @@ local function startNodeProcessingTask(nodes)
         return processVisibleNodesBatch(nodes)
     end)
 end
-
--- Call this function to start processing nodes
---startNodeProcessingTask(Node.GetNodes())  -- Use Node.getNodes() to get the nodes
-
--- OnDraw callback to process batches of visible nodes
-local function OnDraw()
-    if not loader.task_done then
-        --loader.update()  -- Update the loader each frame to continue processing
-    end
-end
-
--- Register the OnDraw callback to be called each frame
---callbacks.Unregister("Draw", "ProcessVisibleNodesBatch")
---callbacks.Register("Draw", "ProcessVisibleNodesBatch", OnDraw)
 
 ---@param event GameEvent
 local function OnGameEvent(event)

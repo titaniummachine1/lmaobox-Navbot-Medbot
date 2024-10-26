@@ -21,6 +21,7 @@ local shouldJump = false
 local HITBOX_MIN = Vector3(-23.99, -23.99, 0)
 local HITBOX_MAX = Vector3(23.99, 23.99, 82)
 local MAX_JUMP_HEIGHT = Vector3(0, 0, 72)   -- Maximum jump height vector
+local STEP_HEIGHT = Vector3(0, 0, 18)   -- Maximum jump height vector
 local MAX_WALKABLE_ANGLE = 45               -- Maximum angle considered walkable
 local GRAVITY = 800                         -- Gravity per second squared
 local JUMP_FORCE = 277                      -- Initial vertical boost for a duck jump
@@ -139,46 +140,44 @@ end
 local function SmartJump(cmd)
     if not pLocal then return end
     if not G.Menu.Movement.Smart_Jump then return end
+    shouldJump = false
 
     if onGround then
-        -- Adjust velocity based on movement input
         local adjustedVelocity = AdjustVelocity(cmd)
-        -- Get player's position
         local playerPos = pLocal:GetAbsOrigin()
+
         -- Calculate jump peak position and direction
         local jumpPeakPos, jumpDirection = GetJumpPeak(adjustedVelocity, playerPos)
-        jumpPeakPosition = jumpPeakPos
 
-        -- Trace from player position to jump peak position
-        local trace = engine.TraceHull(playerPos, jumpPeakPos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-        jumpPeakPosition = trace.endpos
+       -- Move up
+       local startTracePos = playerPos + STEP_HEIGHT
+       jumpPeakPos = jumpPeakPos + STEP_HEIGHT
+
+       -- Trace from player position to forward direction
+       local trace = engine.TraceHull(startTracePos, jumpPeakPos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+       local ForwardPos = trace.endpos
+
+        -- Trace down to snap to ground
+        local downTrace = engine.TraceHull(ForwardPos , ForwardPos - MAX_JUMP_HEIGHT, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+        ForwardPos = downTrace.endpos
 
         if trace.fraction < 1 then
-            -- Move up by max jump height
-            local startTracePos = trace.endpos + MAX_JUMP_HEIGHT
             -- Move forward slightly
-            local endTracePos = startTracePos + jumpDirection * 1
-            -- Trace forward to check for sliding on walls
-            local forwardTrace = engine.TraceHull(startTracePos, endTracePos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-            jumpPeakPosition = forwardTrace.endpos
+            local JumpPos = ForwardPos + jumpDirection * 1
 
             -- Trace down to check for landing
-            local downTrace = engine.TraceHull(jumpPeakPosition, jumpPeakPosition - MAX_JUMP_HEIGHT, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-            jumpPeakPosition = downTrace.endpos
+            local downTrace = engine.TraceHull(JumpPos + MAX_JUMP_HEIGHT, JumpPos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+            JumpPos = downTrace.endpos
 
             if downTrace.fraction > 0 and downTrace.fraction < 0.75 then
                 local normal = downTrace.plane
                 if IsSurfaceWalkable(normal) then
                     shouldJump = true
-                else
-                    shouldJump = false
                 end
             end
         end
     elseif input.IsButtonDown(KEY_SPACE) then
         shouldJump = true
-    else
-        shouldJump = false
     end
 end
 
