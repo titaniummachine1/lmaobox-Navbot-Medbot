@@ -4,7 +4,7 @@ local Common = require("Lmaobot.Common")
 local G = require("Lmaobot.Utils.Globals")
 
 -- Function to process a single node and calculate its position
-function Node.createNode(area)
+function Node.create(area)
     local cX = (area.north_west.x + area.south_east.x) / 2
     local cY = (area.north_west.y + area.south_east.y) / 2
     local cZ = (area.north_west.z + area.south_east.z) / 2
@@ -61,7 +61,7 @@ end
 
 ---@param pos Vector3|{ x:number, y:number, z:number }
 ---@return Node
-function Node.GetClosestNode(pos)
+function Node.GetClosest(pos)
     local closestNode = {}
     local closestDist = math.huge
 
@@ -129,16 +129,6 @@ end
 -- Get a node by its ID
 function Node.GetNodeByID(id)
     return G.Navigation.nodes[id]
-end
-
--- Set the current path globally
-function Node.setCurrentPath(path)
-    G.Navigation.path = path
-end
-
--- Get the current path
-function Node.getCurrentPath()
-    return G.Navigation.path
 end
 
 return Node
