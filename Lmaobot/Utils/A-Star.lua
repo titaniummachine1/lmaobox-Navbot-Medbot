@@ -22,7 +22,7 @@ local function ReconstructPath(current, previous)
 end
 
 local function isvalid(node, connode)
-    return node and connode and (connode.pos.z - node.pos.z) < 90
+    return (connode.pos.z - node.pos.z) < 100
 end
 
 -- Returns all adjacent nodes of the given node, including visible ones
@@ -38,14 +38,12 @@ local function GetAdjacentNodes(node, nodes)
         return adjacentNodes
     end
 
-    -- Iterate through connections (directions 1 to 4)
-    for dir = 1, 27 do
-        if not node.c[dir] then break end
-
-        local conDir = node.c[dir]
+    -- Iterate up to 27 connections
+    for dir, conDir in ipairs(node.c) do
+        if dir > 27 then break end  -- Limit to 27 directions
 
         if conDir and conDir.connections then
-            for _, con in pairs(conDir.connections) do
+            for _, con in ipairs(conDir.connections) do
                 local conNode = nodes[con]
                 if conNode and isvalid(node, conNode) then
                     table.insert(adjacentNodes, conNode)
