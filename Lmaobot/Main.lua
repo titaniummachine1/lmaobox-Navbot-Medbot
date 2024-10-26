@@ -102,30 +102,50 @@ local function shouldSkipToNextNode(currentNode, nextNode, LocalOrigin)
        and Common.isWalkable(currentNode.pos, nextNode.pos)
 end
 
--- Skips to the closest walkable node from the player’s current position, ignoring all nodes beyond it
+-- Function to skip to the closest walkable node from the player's position
 local function skipToClosestWalkableNode(LocalOrigin)
     local path = G.Navigation.path
-    local lastIndex = #path
+    local closestIndex = #path  -- Start from the end of the path
 
-    -- Variable to store the closest walkable node index
-    local closestWalkableIndex = lastIndex
-
-    -- Iterate backwards through the path to find the closest walkable node
-    for i = lastIndex, 1, -1 do
+    -- Find the closest walkable node from the player's position
+    for i = #path, 1, -1 do
         local node = path[i]
-
-        -- Check if this node is walkable from the player's position
         if Common.isWalkable(LocalOrigin, node.pos) then
-            closestWalkableIndex = i
-            break  -- Stop at the first walkable node found closest to the player
+            closestIndex = i
+            break  -- Stop at the first reachable node
         end
     end
 
-    -- If closest walkable node is found, skip to it
-    if closestWalkableIndex ~= lastIndex then
-        Navigation.SkipToNode(closestWalkableIndex)
+    -- Skip to the closest node, removing nodes with a higher index
+    if closestIndex < #path then
+        Navigation.SkipToNode(closestIndex)
     end
 end
+
+-- Function to optimize the path by skipping intermediate nodes within a distance limit
+local function optimizePath()
+    local path = G.Navigation.path
+    local lastIndex = #path
+
+    -- Start optimization from the last node in the path
+    for i = lastIndex - 1, 1, -1 do
+        local lastNode = path[lastIndex]
+        local currentNode = path[i]
+
+        -- Check if the current node is within 750 units and directly reachable from the last node
+        if (lastNode.pos - currentNode.pos):Length() <= 750 
+           and Common.isWalkable(lastNode.pos, currentNode.pos) then
+            -- Skip intermediate nodes by updating the last index to the current node
+            lastIndex = i
+        end
+    end
+
+    -- If an optimization was made, skip to the new lastIndex node
+    if lastIndex < #path then
+        Navigation.SkipToNode(lastIndex)
+    end
+end
+
 
 -- Helper to attempt jumping if stuck for too long
 local function attemptJumpIfStuck(userCmd)

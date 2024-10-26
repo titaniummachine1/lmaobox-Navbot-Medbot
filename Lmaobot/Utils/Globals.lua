@@ -53,7 +53,7 @@ G.Gui = {
 }
 
 G.Misc = {
-    NodeTouchDistance = 12,
+    NodeTouchDistance = 14,
     NodeTouchHeight = 82,
 }
 

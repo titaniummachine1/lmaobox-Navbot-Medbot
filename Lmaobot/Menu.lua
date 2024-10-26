@@ -123,9 +123,6 @@ local function OnDrawMenu()
 
             ImMenu.BeginFrame(1)
                 G.Menu.Main.Optimise_Path = ImMenu.Checkbox("Optimise Path", G.Menu.Main.Optimise_Path)
-                if G.Menu.Main.Optimise_Path then
-                    G.Menu.Main.OptimizationLimit = ImMenu.Slider("Optimization Limit", G.Menu.Main.OptimizationLimit, 1, 100)
-                end
             ImMenu.EndFrame()
 
             ImMenu.BeginFrame(1)
