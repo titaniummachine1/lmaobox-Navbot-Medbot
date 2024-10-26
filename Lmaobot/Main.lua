@@ -4,13 +4,14 @@
 
 --[[ Imports ]]
 local G = require("Lmaobot.Utils.Globals")
-local Node = require("Lmaobot.Utils.Node")  -- Using Node module
 local Common = require("Lmaobot.Common")
 
 require("Lmaobot.Modules.Setup")
 
+local Node = require("Lmaobot.Utils.Node")  -- Using Node module
 local Navigation = require("Lmaobot.Utils.Navigation")
 local WorkManager = require("Lmaobot.WorkManager")
+local TaskManager = require("Lmaobot.TaskManager") -- Adjust the path as necessary
 
 local Lib = Common.Lib
 local Log = Common.Log
@@ -20,18 +21,25 @@ local Notify, WPlayer = Lib.UI.Notify, Lib.TF2.WPlayer
 --[[ Functions ]]
 local function HealthLogic(pLocal)
     if not pLocal then return end
+
     local health = pLocal:GetHealth()
     local maxHealth = pLocal:GetMaxHealth()
-    if health and maxHealth and (health / maxHealth) * 100 < G.Menu.Main.SelfHealTreshold and not pLocal:InCond(TFCond_Healing) then
-        if not G.Current_Tasks[G.Tasks.Health] and G.Menu.Main.shouldfindhealth then
+    local healthPercentage = (health / maxHealth) * 100
+
+    -- Ensure G.Menu.Main.SelfHealTreshold and shouldfindhealth exist
+    local selfHealThreshold = G.Menu.Main.SelfHealTreshold or 50  -- Default to 50% if not set
+    local shouldFindHealth = G.Menu.Main.shouldfindhealth
+
+    if health and maxHealth and healthPercentage < selfHealThreshold and not pLocal:InCond(TFCond_Healing) then
+        if not TaskManager.IsTaskActive("Health") and shouldFindHealth then
             Log:Info("Switching to health task")
-            Common.AddCurrentTask("Health")
+            TaskManager.AddTask("Health")
             Navigation.ClearPath()
         end
     else
-        if G.Current_Tasks[G.Tasks.Health] then
-            Log:Info("Health task no longer needed, switching back to objective task")
-            Common.RemoveCurrentTask("Health")
+        if TaskManager.IsTaskActive("Health") then
+            Log:Info("Health task no longer needed, switching back to previous task")
+            TaskManager.RemoveTask("Health")
             Navigation.ClearPath()
         end
     end
@@ -173,9 +181,9 @@ local function OnCreateMove(userCmd)
         return
     end
 
-    local currentTask = Common.GetHighestPriorityTask()
+    local currentTask = TaskManager.GetCurrentTask()
     if not currentTask then
-        Common.AddCurrentTask("Objective") -- default task
+        TaskManager.AddTask("Objective") -- default task
         Navigation.ClearPath()
         return
     end
@@ -194,6 +202,7 @@ local function OnCreateMove(userCmd)
 
     if G.State == G.StateDefinition.PathWalking then
         handlePathWalkingView(userCmd) --viewangle manager
+        --HealthLogic(pLocal) -- health manager
 
         local LocalOrigin = G.pLocal.Origin
         local nodePos = Node.currentNodePos()
@@ -210,7 +219,7 @@ local function OnCreateMove(userCmd)
             if not G.Navigation.path or #G.Navigation.path == 0 then
                 Navigation.ClearPath()
                 Log:Info("Reached end of path.")
-                Common.RemoveCurrentTask(currentTask)
+                TaskManager.RemoveTask(currentTask)
                 return
             end
         else

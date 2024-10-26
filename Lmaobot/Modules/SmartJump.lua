@@ -269,6 +269,7 @@ local function OnDraw()
 
     -- Draw predicted position
     local screenPredPos = client.WorldToScreen(predictedPosition)
+    if not predictedPosition then return end
     if screenPredPos then
         draw.Color(255, 0, 0, 255)  -- Red color
         draw.FilledRect(screenPredPos[1] - 5, screenPredPos[2] - 5, screenPredPos[1] + 5, screenPredPos[2] + 5)

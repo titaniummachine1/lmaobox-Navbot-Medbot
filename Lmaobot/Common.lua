@@ -33,42 +33,6 @@ function Common.Normalize(vec)
     return vec / vec:Length()
 end
 
-function Common.AddCurrentTask(taskKey)
-    local task = G.Tasks[taskKey]
-    if task and not G.Current_Tasks[taskKey] then
-        G.Current_Tasks[taskKey] = task
-    end
-end
-
-function Common.RemoveCurrentTask(taskKey)
-    if G.Current_Tasks[taskKey] then
-        G.Current_Tasks[taskKey] = nil
-    end
-end
-
-function Common.GetHighestPriorityTask()
-    local highestPriorityTaskKey = nil
-    local highestPriority = math.huge
-
-    for taskKey, priority in pairs(G.Current_Tasks) do
-        if priority < highestPriority then
-            highestPriority = priority
-            highestPriorityTaskKey = taskKey
-        end
-    end
-
-    return highestPriorityTaskKey
-end
-
--- Reset tasks to the initial objective
-function Common.Reset(Default)
-    G.Current_Tasks = {}
-    local initialObjectiveTaskKey = Default -- Assuming this is defined somewhere in G
-    if initialObjectiveTaskKey then
-        Common.AddCurrentTask(initialObjectiveTaskKey)
-    end
-end
-
 --[[ Callbacks ]]
 local function OnUnload() -- Called when the script is unloaded
     UnloadLib() --unloading lualib

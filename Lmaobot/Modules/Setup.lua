@@ -9,6 +9,7 @@ local G = require("Lmaobot.Utils.Globals")
 local SourceNav = require("Lmaobot.Utils.SourceNav")
 local Node = require("Lmaobot.Utils.Node")  -- Using Node module
 local Navigation = require("Lmaobot.Utils.Navigation")
+local TaskManager = require("Lmaobot.TaskManager") -- Adjust the path as necessary
 --local loader = require("Lmaobot.Utils.loader")
 local Log = Common.Log
 
@@ -150,7 +151,7 @@ function SetupModule.SetupNavigation()
     -- Reload nodes from the navigation file
     SetupModule.LoadNavFile()
     Navigation.ClearPath() -- Clear path after loading nav file
-    Common.Reset("Objective") -- Reset any ongoing objective
+    TaskManager.Reset(G.Tasks.Objective) --Rseset any ongoing objective
     Log:Info("Navigation setup initiated.")
 
     --reindex all nodes
