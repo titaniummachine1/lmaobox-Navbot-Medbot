@@ -58,7 +58,7 @@ function SetupModule.processNavData(navData)
     local navNodes = {}
     local totalNodes = 0
 
-    for _, area in ipairs(navData.areas) do
+    for _, area in pairs(navData.areas) do
         navNodes[area.id] = Node.create(area)  -- Use Node module for node creation
         totalNodes = totalNodes + 1
     end
@@ -92,9 +92,8 @@ function SetupModule.processNavDataAndSet(navData)
     if not navNodes or next(navNodes) == nil then
         Log:Error("No nodes found in nav data after processing.")
     else
-        Log:Info("Parsed %d areas from nav file.", #navNodes)
         Node.SetNodes(navNodes)  -- Set nodes in global state
-        Log:Info("Nav nodes set and fixed.")
+        Log:Info("Nav nodes set")
     end
 end
 
@@ -134,8 +133,6 @@ function SetupModule.LoadNavFile()
     local navFile = string.gsub(mapFile, "%.bsp$", ".nav")
     Log:Info("Loading nav file for current map: %s", navFile)
     SetupModule.LoadFile(navFile)
-    Navigation.ClearPath() -- Clear path after loading nav file
-    Log:Info("Path cleared after loading nav file.")
 end
 
 -- Total number of nodes and other variables
@@ -145,20 +142,14 @@ local totalNodes = 0
 -- Function to setup the navigation by loading the navigation file
 function SetupModule.SetupNavigation()
     -- Reload nodes from the navigation file
-    SetupModule.LoadNavFile() 
+    SetupModule.LoadNavFile()
+    Navigation.ClearPath() -- Clear path after loading nav file
     Common.Reset("Objective") -- Reset any ongoing objective
     Log:Info("Navigation setup initiated.")
 
     --reindex all nodes
-    G.Navigation.nodes = Node.reindexNodesSequentially(G.Navigation.nodes)
-    
-    -- Counting total nodes using `table.count` for tables with non-sequential keys
-    totalNodes = 0
-    for _, _ in pairs(G.Navigation.nodes) do
-        totalNodes = totalNodes + 1
-    end
-
-    Log:Info(string.format("Total nodes: %d",  totalNodes))
+    Node.SetNodes(Node.reindexNodesSequentially(Node.GetNodes()))
+    Log:Info(string.format("Total nodes: %d", #Node.GetNodes()))
 end
 
 -- Initial setup

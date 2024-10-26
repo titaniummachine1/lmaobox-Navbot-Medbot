@@ -102,25 +102,28 @@ local function shouldSkipToNextNode(currentNode, nextNode, LocalOrigin)
        and Common.isWalkable(currentNode.pos, nextNode.pos)
 end
 
--- Skips to the closest node if it's closer to the player and walkable
+-- Skips to the closest walkable node from the player’s current position, ignoring all nodes beyond it
 local function skipToClosestWalkableNode(LocalOrigin)
-    local closestNodeIndex = #G.Navigation.path
-    local currentToPlayerDist = 1000
+    local path = G.Navigation.path
+    local lastIndex = #path
 
-    for i = #G.Navigation.path - 1, 1, -1 do
-        local node = G.Navigation.path[i]
-        local playerToNodeDist = (LocalOrigin - node.pos):Length()
+    -- Variable to store the closest walkable node index
+    local closestWalkableIndex = lastIndex
 
-        if playerToNodeDist < currentToPlayerDist 
-           and Common.isWalkable(LocalOrigin, node.pos) 
-           and Common.isWalkable(G.Navigation.path[#G.Navigation.path].pos, node.pos) then
-            closestNodeIndex = i
-            currentToPlayerDist = playerToNodeDist
+    -- Iterate backwards through the path to find the closest walkable node
+    for i = lastIndex, 1, -1 do
+        local node = path[i]
+
+        -- Check if this node is walkable from the player's position
+        if Common.isWalkable(LocalOrigin, node.pos) then
+            closestWalkableIndex = i
+            break  -- Stop at the first walkable node found closest to the player
         end
     end
 
-    if closestNodeIndex ~= #G.Navigation.path then
-        Navigation.SkipToNode(closestNodeIndex)
+    -- If closest walkable node is found, skip to it
+    if closestWalkableIndex ~= lastIndex then
+        Navigation.SkipToNode(closestWalkableIndex)
     end
 end
 
@@ -206,11 +209,9 @@ local function OnCreateMove(userCmd)
                     if currentNode and nextNode and shouldSkipToNextNode(currentNode, nextNode, LocalOrigin) then
                         Log:Info("Skipping to next node %d", nextNode.id)
                         Navigation.MoveToNextNode()
-                    else
-                        Log:Warn("Path to next node %d is blocked.", nextNode.id)
                     end
 
-                    if WorkManager.attemptWork(16, "node skip all") then
+                    if G.Menu.Main.Optymise_Path and WorkManager.attemptWork(17, "optymise path") then
                         skipToClosestWalkableNode(LocalOrigin)
                     end
                 end
