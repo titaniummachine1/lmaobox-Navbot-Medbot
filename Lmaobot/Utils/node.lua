@@ -13,40 +13,12 @@ function Node.createNode(area)
         pos = Vector3(cX, cY, cZ),
         id = area.id,
         c = area.connections or {},  -- Ensure connections exist
-        nw = area.north_west,
-        se = area.south_east,
+        corners = {
+            nw = area.north_west,
+            se = area.south_east,
+        },
         visible_areas = area.visible_areas or {}  -- Handle missing visible areas
     }
-end
-
--- Function to reindex nodes sequentially
-function Node.reindexNodesSequentially(nodes)
-    local newNodes = {}
-    local idMap = {}  -- Map old IDs to new sequential IDs
-    local index = 1   -- Start with the first sequential ID
-
-    -- First pass: assign new sequential IDs while keeping original connections
-    for oldID, node in pairs(nodes) do
-        idMap[oldID] = index  -- Map old ID to new sequential ID
-        node.id = index       -- Assign the new ID
-        newNodes[index] = node  -- Store the node in the new table
-        index = index + 1
-    end
-
-    -- Second pass: update all connections to use the new sequential IDs
-    for _, node in pairs(newNodes) do
-        if node.c then
-            for _, connData in pairs(node.c) do
-                if connData.connections then
-                    for i, connID in ipairs(connData.connections) do
-                        connData.connections[i] = idMap[connID]  -- Update to new ID
-                    end
-                end
-            end
-        end
-    end
-
-    return newNodes  -- Return the new table with sequential IDs
 end
 
 -- Function to process connections for a node
@@ -85,58 +57,57 @@ function Node.removeConnection(nodeA, nodeB, nodes)
             end
         end
     end
-
-    -- Remove the reverse connection from nodeB to nodeA
-    for dir = 1, 4 do
-        local conDir = nodeBGlobal.c[dir]
-        if conDir then
-            for i, con in ipairs(conDir.connections) do
-                if con == nodeA.id then
-                    table.remove(conDir.connections, i)
-                    conDir.count = conDir.count - 1
-                    break
-                end
-            end
-        end
-    end
 end
 
--- Fix node by adjusting its height
-function Node.fixNode(nodeId, nodes, traceFunctions)
-    local node = nodes[nodeId]
-    if not node or not node.pos then return end
-
-    -- Adjust corners based on trace line results
-    local raiseVector = Vector3(0, 0, traceFunctions.Jump_Height)
-    node.nw = traceFunctions.traceLineDown(node.nw + raiseVector)
-    node.se = traceFunctions.traceLineDown(node.se + raiseVector)
-
-    node.pos = (node.nw + node.se) / 2  -- Update node position to the midpoint
-end
-
--- Fix all nodes by adjusting their positions
-function Node.fixAllNodes(nodes, traceFunctions)
-    for id in pairs(nodes) do
-        Node.fixNode(id, nodes, traceFunctions)
-    end
-end
-
--- Get the closest node to a given position
-function Node.getClosestNode(pos, nodes)
-    local closestNode = nil
+---@param pos Vector3|{ x:number, y:number, z:number }
+---@return Node
+function Node.GetClosestNode(pos)
+    local closestNode = {}
     local closestDist = math.huge
 
-    for _, node in pairs(nodes) do
+    for _, node in pairs(G.Navigation.nodes or {}) do
         if node and node.pos then
             local dist = (node.pos - pos):Length()
-            if dist < closestDist then
+            if dist < closestDist and Common.isWalkable(pos, node.pos)  then
                 closestNode = node
                 closestDist = dist
             end
+        else
+            error("GetClosestNode: Node or node.pos is nil")
         end
     end
 
     return closestNode
+end
+
+-- Function to reindex nodes sequentially
+function Node.reindexNodesSequentially(nodes)
+    local newNodes = {}
+    local idMap = {}  -- Map old IDs to new sequential IDs
+    local index = 1   -- Start with the first sequential ID
+
+    -- First pass: assign new sequential IDs while keeping original connections
+    for oldID, node in pairs(nodes) do
+        idMap[oldID] = index  -- Map old ID to new sequential ID
+        node.id = index       -- Assign the new ID
+        newNodes[index] = node  -- Store the node in the new table
+        index = index + 1
+    end
+
+    -- Second pass: update all connections to use the new sequential IDs
+    for _, node in pairs(newNodes) do
+        if node.c then
+            for _, connData in pairs(node.c) do
+                if connData.connections then
+                    for i, connID in ipairs(connData.connections) do
+                        connData.connections[i] = idMap[connID]  -- Update to new ID
+                    end
+                end
+            end
+        end
+    end
+
+    return newNodes  -- Return the new table with sequential IDs
 end
 
 -- Clear all nodes
@@ -146,23 +117,18 @@ function Node.clearNodes()
 end
 
 -- Set new nodes into the global state
-function Node.setNodes(nodes)
+function Node.SetNodes(nodes)
     G.Navigation.nodes = nodes
 end
 
 -- Get all nodes from the global state
-function Node.getNodes()
+function Node.GetNodes()
     return G.Navigation.nodes
 end
 
 -- Get a node by its ID
-function Node.getNodeByID(id)
+function Node.GetNodeByID(id)
     return G.Navigation.nodes[id]
-end
-
--- Remove the current node from the path
-function Node.removeCurrentNode(path)
-    table.remove(path[#path])
 end
 
 -- Set the current path globally

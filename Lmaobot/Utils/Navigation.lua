@@ -13,164 +13,6 @@ local Log = Common.Log
 local Lib = Common.Lib
 assert(Lib, "Lib is nil")
 
-function Navigation.RemoveConnection(nodeA, nodeB)
-    -- Ensure nodeA and nodeB are valid and present in G.Navigation.nodes
-    if not nodeA or not nodeB then
-        print("One or both nodes are nil, exiting function")
-        return
-    end
-
-    -- Access global nodes table directly
-    local nodeAGlobal = G.Navigation.nodes[nodeA.id]
-    local nodeBGlobal = G.Navigation.nodes[nodeB.id]
-
-    if not nodeAGlobal or not nodeBGlobal then
-        print("One or both nodes are not found in the global node table")
-        return
-    end
-
-    -- Remove connection from nodeA to nodeB
-    for dir = 1, 4 do
-        local conDir = G.Navigation.nodes[nodeA.id].c[dir]
-        if conDir then
-            for i, con in ipairs(conDir.connections) do
-                if con == nodeBGlobal.id then
-                    print("Removing connection from node " .. nodeA.id .. " to node " .. nodeB.id)
-                    table.remove(conDir.connections, i)
-                    conDir.count = conDir.count - 1
-                    break  -- Stop after finding and removing the connection
-                end
-            end
-        end
-    end
-end
-
-
---[[-- Perform a trace hull down from the given position to the ground
----@param position Vector3 The start position of the trace
----@param hullSize table The size of the hull
----@return Vector3 The normal of the ground at that point
-local function traceHullDown(position, hullSize)
-    local endPos = position - Vector3(0, 0, DROP_HEIGHT)  -- Adjust the distance as needed
-    local traceResult = engine.TraceHull(position, endPos, hullSize.min, hullSize.max, MASK_PLAYERSOLID_BRUSHONLY)
-    return traceResult.plane  -- Directly using the plane as the normal
-end
-
--- Perform a trace line down from the given position to the ground
----@param position Vector3 The start position of the trace
----@return Vector3 The hit position
-local function traceLineDown(position)
-    local endPos = position - Vector3(0, 0, DROP_HEIGHT)
-    local traceResult = engine.TraceLine(position, endPos, TRACE_MASK)
-    return traceResult.endpos
-end
-
--- Calculate the remaining two corners based on the adjusted corners and ground normal
----@param corner1 Vector3 The first adjusted corner
----@param corner2 Vector3 The second adjusted corner
----@param normal Vector3 The ground normal
----@param height number The height of the rectangle
----@return table The remaining two corners
-local function calculateRemainingCorners(corner1, corner2, normal, height)
-    local widthVector = corner2 - corner1
-    local widthLength = widthVector:Length2D()
-
-    local heightVector = Vector3(-widthVector.y, widthVector.x, 0)
-
-    local function rotateAroundNormal(vector, angle)
-        local cosTheta = math.cos(angle)
-        local sinTheta = math.sin(angle)
-        return Vector3(
-            (cosTheta + (1 - cosTheta) * normal.x^2) * vector.x + ((1 - cosTheta) * normal.x * normal.y - normal.z * sinTheta) * vector.y + ((1 - cosTheta) * normal.x * normal.z + normal.y * sinTheta) * vector.z,
-            ((1 - cosTheta) * normal.x * normal.y + normal.z * sinTheta) * vector.x + (cosTheta + (1 - cosTheta) * normal.y^2) * vector.y + ((1 - cosTheta) * normal.y * normal.z - normal.x * sinTheta) * vector.z,
-            ((1 - cosTheta) * normal.x * normal.z - normal.y * sinTheta) * vector.x + ((1 - cosTheta) * normal.y * normal.z + normal.x * sinTheta) * vector.y + (cosTheta + (1 - cosTheta) * normal.z^2) * vector.z
-        )
-    end
-
-    local rotatedHeightVector = rotateAroundNormal(heightVector, math.pi / 2)
-
-    local corner3 = corner1 + rotatedHeightVector * (height / widthLength)
-    local corner4 = corner2 + rotatedHeightVector * (height / widthLength)
-
-    return { corner3, corner4 }
-end
-
--- Fix a node by adjusting its height based on TraceLine results from the corners
----@param nodeId integer The index of the node in the Nodes table
-function Navigation.FixNode(nodeId)
-    local nodes = G.Navigation.nodes
-    local node = nodes[nodeId]
-    if not node or not node.pos then
-        print("Node with ID " .. tostring(nodeId) .. " is invalid or missing position, exiting function")
-        return
-    end
-
-    -- Step 1: Raise the corners by a defined height
-    local raiseVector = Vector3(0, 0, Jump_Height)
-    local raisedNWPos = node.nw + raiseVector
-    local raisedSEPos = node.se + raiseVector
-
-    -- Step 2: Calculate the middle position after raising the corners
-    local middlePos = (raisedNWPos + raisedSEPos) / 2
-
-    -- Step 3: Perform trace hull down from the middle position to get the ground normal
-    local traceHullSize = {
-        -- Clamp the size to player hitbox size to avoid staircase issues
-        min = Vector3(math.max(-math.abs(raisedNWPos.x - raisedSEPos.x) / 2, HULL_MIN.x), math.max(-math.abs(raisedNWPos.y - raisedSEPos.y) / 2, HULL_MIN.y), 0),
-        max = Vector3(math.min(math.abs(raisedNWPos.x - raisedSEPos.x) / 2, HULL_MAX.x), math.min(math.abs(raisedNWPos.y - raisedSEPos.y) / 2, HULL_MAX.y), 45)
-    }
-
-   --local groundNormal = traceHullDown(middlePos, traceHullSize)
-
-    -- Step 4: Calculate the remaining corners based on the ground normal
-    --local height = math.abs(node.nw.y - node.se.y)
-    --local remainingCorners = calculateRemainingCorners(raisedNWPos, raisedSEPos, groundNormal, height)
-
-    -- Step 5: Adjust corners to align with the ground normal
-    raisedNWPos = traceLineDown(raisedNWPos)
-    raisedSEPos = traceLineDown(raisedSEPos)
-    --remainingCorners[1] = traceLineDown(remainingCorners[1])
-    --remainingCorners[2] = traceLineDown(remainingCorners[2])
-
-    -- Step 6: Update node with new corners and position
-    node.nw = raisedNWPos
-    node.se = raisedSEPos
-    --node.ne = remainingCorners[1]
-    --node.sw = remainingCorners[2]
-
-    -- Step 7: Recalculate the middle position based on the fixed corners
-    local finalMiddlePos = (raisedNWPos + raisedSEPos) / 2
-    node.pos = finalMiddlePos
-
-    G.Navigation.nodes[nodeId] = node -- Set the fixed node to the global node
-end
-
--- Adjust all nodes by fixing their positions and adding missing corners.
-function Navigation.FixAllNodes()
-    --local nodes = Navigation.GetNodes()
-    --for id in pairs(nodes) do
-        Navigation.FixNode(id)
-    end
-end]]
-
--- Set the raw nodes and copy them to the fixed nodes table
----@param nodes Node[]
-function Navigation.SetNodes(Nodes)
-    G.Navigation.nodes = Nodes
-end
-
-function Navigation.Setup()
-    Navigation.LoadNavFile() --load nodes
-    G.State = G.StateDefinition.Pathfinding
-    Common.Reset("Objective")
-end
-
--- Get the fixed nodes used for calculations
----@return Node[]
-function Navigation.GetNodes()
-    return G.Navigation.nodes
-end
-
 -- Get the current path
 ---@return Node[]|nil
 function Navigation.GetCurrentPath()
@@ -180,13 +22,6 @@ end
 -- Clear the current path
 function Navigation.ClearPath()
     G.Navigation.path = {}
-end
-
--- Get a node by its ID
----@param id integer
----@return Node
-function Navigation.GetNodeByID(id)
-    return G.Navigation.nodes[id]
 end
 
 -- Set the current path
@@ -200,7 +35,7 @@ function Navigation.SetCurrentPath(path)
 end
 
 -- Remove the current node from the path
-function Navigation.RemoveCurrentNode()
+function Navigation.RemoveLastNode()
     G.Navigation.currentNodeTicks = 0
     table.remove(G.Navigation.path[#G.Navigation.path])
 end
@@ -325,39 +160,6 @@ function Navigation.WalkTo(pCmd, pLocal, pDestination)
     end
 end
 
----@param node NavNode
----@param pos Vector3
----@return Vector3
-function Navigation.GetMeshPos(node, pos)
-    -- Calculate the closest point on the node's 3D plane to the given position
-    return Vector3(
-        math.max(node.nw.pos.x, math.min(node.se.pos.x, pos.x)),
-        math.max(node.nw.pos.y, math.min(node.se.pos.y, pos.y)),
-        math.max(node.nw.pos.z, math.min(node.se.pos.z, pos.z))
-    )
-end
-
----@param pos Vector3|{ x:number, y:number, z:number }
----@return Node
-function Navigation.GetClosestNode(pos)
-    local closestNode = {}
-    local closestDist = math.huge
-
-    for _, node in pairs(G.Navigation.nodes or {}) do
-        if node and node.pos then
-            local dist = (node.pos - pos):Length()
-            if dist < closestDist and Common.isWalkable(pos, node.pos)  then
-                closestNode = node
-                closestDist = dist
-            end
-        else
-            error("GetClosestNode: Node or node.pos is nil")
-        end
-    end
-
-    return closestNode
-end
-
 function Navigation.FindPath(startNode, goalNode)
     if not startNode or not startNode.pos then
         Log:Warn("Navigation.FindPath: startNode or startNode.pos is nil")
@@ -378,6 +180,17 @@ function Navigation.FindPath(startNode, goalNode)
     end
 end
 
+-- Helper function to remove all nodes after a specific index in the path
+---@param path table The navigation path table
+---@param targetIndex integer The target index to keep up to
+local function removeNodesAfter(path, targetIndex)
+    for i = #path, targetIndex + 1, -1 do
+        table.remove(path)
+    end
+end
+
+-- Skip to a specific node in the path, removing all nodes with a higher index
+---@param nodeIndexFromStart integer The target index to skip to
 function Navigation.SkipToNode(nodeIndexFromStart)
     Navigation.ResetTickTimer()
 
@@ -389,11 +202,8 @@ function Navigation.SkipToNode(nodeIndexFromStart)
         G.Navigation.currentNode = G.Navigation.path[targetIndex]
         G.Navigation.currentNodePos = G.Navigation.currentNode.pos
 
-        -- Remove all nodes after the targetIndex
-        for i = #G.Navigation.path, targetIndex + 1, -1 do
-            table.remove(G.Navigation.path)
-        end
-
+        -- Remove nodes beyond the target index
+        removeNodesAfter(G.Navigation.path, targetIndex)
         G.Navigation.currentNodeIndex = targetIndex
     else
         -- Clear the current node and position if no path exists
@@ -402,29 +212,28 @@ function Navigation.SkipToNode(nodeIndexFromStart)
     end
 end
 
+-- Move to the next node in the path, effectively removing the last node
 function Navigation.MoveToNextNode()
     Navigation.ResetTickTimer()
     if G.Navigation.path and #G.Navigation.path > 0 then
-        -- Remove the last node from the path
-        table.remove(G.Navigation.path)
+        -- Remove the current node by skipping to the next-to-last node
+        removeNodesAfter(G.Navigation.path, #G.Navigation.path - 1)
         G.Navigation.currentNodeIndex = #G.Navigation.path
 
-        -- If there are still nodes left, set the current node to the new last node
+        -- Update current node to the last one in the remaining path
         if #G.Navigation.path > 0 then
             G.Navigation.currentNode = G.Navigation.path[#G.Navigation.path]
             G.Navigation.currentNodePos = G.Navigation.currentNode.pos
         else
-            -- If no nodes are left, clear currentNode and currentNodePos
+            -- Clear currentNode and currentNodePos if no nodes are left
             G.Navigation.currentNode = nil
             G.Navigation.currentNodePos = nil
         end
     else
-        -- If there is no path or it's empty, clear currentNode and currentNodePos
+        -- If the path is empty, clear currentNode and currentNodePos
         G.Navigation.currentNode = nil
         G.Navigation.currentNodePos = nil
     end
 end
-
-
 
 return Navigation
