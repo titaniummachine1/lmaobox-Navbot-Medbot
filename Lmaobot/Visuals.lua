@@ -161,7 +161,9 @@ local function OnDraw()
     if G.Menu.Visuals.drawCurrentNode and G.Navigation.path then
         draw.Color(255, 0, 0, 255)
 
-        local currentNode = G.Navigation.path[G.Navigation.currentNodeinPath]
+        local currentNode = G.Navigation.path[#G.Navigation.path]
+        if not currentNode then return end
+
         local currentNodePos = currentNode.pos
 
         local screenPos = client.WorldToScreen(currentNodePos)
