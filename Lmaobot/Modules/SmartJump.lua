@@ -137,40 +137,59 @@ local function AdjustVelocity(cmd)
 end
 
 -- Smart jump logic
+local Jump_FRACTION = 0.75
+
 local function SmartJump(cmd)
-    if not pLocal then return end
+    if not pLocal then 
+        print("Error: pLocal is nil. This could be due to the local player not being initialized or not being in a valid state.")
+        return 
+    end
     if not G.Menu.Movement.Smart_Jump then return end
+
     shouldJump = false
 
     if onGround then
+        -- Adjust the player's velocity based on the command input
         local adjustedVelocity = AdjustVelocity(cmd)
+        -- Get the player's current position
         local playerPos = pLocal:GetAbsOrigin()
-
-        -- Calculate jump peak position and direction
+        -- Calculate the peak position and direction of a jump
         local jumpPeakPos, jumpDirection = GetJumpPeak(adjustedVelocity, playerPos)
 
-       -- Move up
-       local startTracePos = playerPos + STEP_HEIGHT
-       jumpPeakPos = jumpPeakPos + STEP_HEIGHT
+        -- Calculate the horizontal distance to the jump peak position
+        local neededDistance = (jumpPeakPos - playerPos):Length2D()
 
-       -- Trace from player position to forward direction
-       local trace = engine.TraceHull(startTracePos, jumpPeakPos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-       local ForwardPos = trace.endpos
+        -- Move the start position up by step height
+        local startTracePos = playerPos + Vector(0, 0, STEP_HEIGHT)
+        -- Calculate the end position by moving forward to the jump peak position
+        local endTracePos = startTracePos + (jumpDirection * neededDistance)
 
-        -- Trace down to snap to ground
-        local downTrace = engine.TraceHull(ForwardPos , ForwardPos - MAX_JUMP_HEIGHT, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-        ForwardPos = downTrace.endpos
+        -- Trace a hull from the start position to the end position
+        local trace = engine.TraceHull(startTracePos, endTracePos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+        local collisionPoint = trace.endpos
+        --global variable for visuals
+        predictedPosition = collisionPoint
 
+        -- If the trace hits something
         if trace.fraction < 1 then
-            -- Move forward slightly
-            local JumpPos = ForwardPos + jumpDirection * 1
+            -- Perform a downward trace to snap to the ground
+            local downTraceStart = collisionPoint
+            local downTraceEnd = collisionPoint - Vector(0, 0, MAX_JUMP_HEIGHT)
+            local downTrace = engine.TraceHull(downTraceStart, downTraceEnd, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+            local groundPos = downTrace.endpos
+            predictedPosition = groundPos
 
-            -- Trace down to check for landing
-            local downTrace = engine.TraceHull(JumpPos + MAX_JUMP_HEIGHT, JumpPos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-            JumpPos = downTrace.endpos
+            -- Move forward slightly in the jump direction
+            local forwardPos = groundPos + jumpDirection
+            -- Perform a downward trace from 72 units above the forward position
+            local jumpTraceStart = forwardPos + Vector(0, 0, MAX_JUMP_HEIGHT)
+            local jumpTraceEnd = forwardPos
+            local jumpDownTrace = engine.TraceHull(jumpTraceStart, jumpTraceEnd, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+            predictedPosition = jumpDownTrace.endpos
 
-            if downTrace.fraction > 0 and downTrace.fraction < 0.75 then
-                local normal = downTrace.plane
+            -- Check if the down trace hits a walkable surface within a certain fraction
+            if jumpDownTrace.fraction > 0 and jumpDownTrace.fraction < Jump_FRACTION then
+                local normal = jumpDownTrace.plane
                 if IsSurfaceWalkable(normal) then
                     shouldJump = true
                 end
@@ -180,6 +199,8 @@ local function SmartJump(cmd)
         shouldJump = true
     end
 end
+
+
 
 -- OnCreateMove callback
 local function OnCreateMove(cmd)
