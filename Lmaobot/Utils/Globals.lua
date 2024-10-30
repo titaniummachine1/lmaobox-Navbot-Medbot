@@ -25,7 +25,7 @@ G.default_menu = {
         memoryUsage = true,
         drawNodes = true, -- Draws all nodes on the map
         drawPath = true, -- Draws the path to the current goal
-        drawCurrentNode = false, -- Draws the current node
+        drawCurrentNode = true, -- Draws the current node
     },
     Movement = {
         lookatpath = false, -- Look at where we are walking
