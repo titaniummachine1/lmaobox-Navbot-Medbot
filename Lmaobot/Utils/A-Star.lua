@@ -30,7 +30,7 @@ end
 
 local MAX_HEIGHT_DIFFERENCE_UP = 72     -- Maximum height the agent can climb up
 local MAX_HEIGHT_DIFFERENCE_DOWN = 250  -- Maximum height the agent can step down
-local TOLERANCE = 5                     -- Tolerance for floating-point comparisons
+local TOLERANCE = 18                    -- Tolerance for floating-point comparisons
 local function isvalid(node, connode)
 
 
