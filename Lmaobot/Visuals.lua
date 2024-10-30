@@ -99,21 +99,6 @@ local function OnDraw()
     if not me then return end
 
     local myPos = me:GetAbsOrigin()
-    local currentY = 120
-    G.Navigation.currentNodeinPath = G.Navigation.currentNodeinPath or 1 -- Initialize currentNodeIndex if it's nil
-    if G.Navigation.currentNodeinPath == nil then return end
-
-    -- Memory usage
-    if G.Menu.Visuals.memoryUsage then
-        draw.Text(20, currentY, string.format("Memory usage: %.2f MB", G.Benchmark.MemUsage / 1024))
-        currentY = currentY + 20
-    end
-
-    -- Auto path informaton
-    if G.Menu.Main.Enable then
-        draw.Text(20, currentY, string.format("Current Node: %d", G.Navigation.currentNodeinPath))
-        currentY = currentY + 20
-    end
 
     -- Draw all nodes
     if G.Menu.Visuals.drawNodes then
@@ -188,7 +173,7 @@ local function OnDraw()
 end
 
 --[[ Callbacks ]]
-callbacks.Unregister("Draw", "MCT_Draw") -- unregister the "Draw" callback
-callbacks.Register("Draw", "MCT_Draw", OnDraw) -- Register the "Draw" callback 
+callbacks.Unregister("Draw", "Navbot_Draw") -- unregister the "Draw" callback
+callbacks.Register("Draw", "Navbot_Draw", OnDraw) -- Register the "Draw" callback 
 
 return Visuals
