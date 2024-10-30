@@ -213,7 +213,6 @@ local function OnCreateMove(userCmd)
             Common.WalkTo(userCmd, pLocal, nodePos)
         end
 
-        
         if shouldMoveToNextNode(horizontalDist, verticalDist) then
             Navigation.MoveToNextNode()
             if not G.Navigation.path or #G.Navigation.path == 0 then
@@ -326,7 +325,7 @@ local function OnCreateMove(userCmd)
             return
         end
 
-        if WorkManager.attemptWork(33, "Pathfinding") then
+        if WorkManager.attemptWork(66, "Pathfinding") then
             Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
             Navigation.ClearPath() -- Ensure we clear the current path before generating a new one
             Navigation.FindPath(startNode, goalNode) -- Run pathfinding synchronously
@@ -342,8 +341,6 @@ local function OnCreateMove(userCmd)
                 Log:Warn("No path found.")
             end
         end
-    else
-        Log:Warn("Unknown state: %s", tostring(G.State))
     end
 end
 

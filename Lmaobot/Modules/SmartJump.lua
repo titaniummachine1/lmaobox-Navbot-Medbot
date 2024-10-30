@@ -265,7 +265,7 @@ end
 -- OnDraw callback for visual debugging
 local function OnDraw()
     pLocal = entities.GetLocalPlayer()
-    if not pLocal or jumpState ~= STATE_AWAITING_JUMP then return end
+    if not pLocal then return end
 
     -- Draw predicted position
     local screenPredPos = client.WorldToScreen(predictedPosition)
