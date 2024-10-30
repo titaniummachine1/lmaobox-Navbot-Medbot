@@ -19,7 +19,7 @@ local jumpPeakPosition = Vector3(0, 0, 0)
 -- Constants
 local JUMP_FRACTION = 0.75  -- Fraction of the jump to consider for landing
 local HITBOX_MIN = Vector3(-23.99, -23.99, 0)
-local HITBOX_MAX = Vector3(23.99, 23.99, 82)
+local HITBOX_MAX = Vector3(23.99, 23.99, 62) --alwasy assuem ducking
 local MAX_JUMP_HEIGHT = Vector3(0, 0, 72)   -- Maximum jump height vector
 local STEP_HEIGHT = Vector3(0, 0, 18)   -- Maximum jump height vector
 local MAX_WALKABLE_ANGLE = 45               -- Maximum angle considered walkable
@@ -223,13 +223,6 @@ local function OnCreateMove(cmd)
     -- Update player states
     onGround = IsPlayerOnGround(pLocal)
     isDucking = IsPlayerDucking(pLocal)
-
-    -- Adjust hitbox based on ducking state
-    if isDucking then
-        HITBOX_MAX.z = 62
-    else
-        HITBOX_MAX.z = 82
-    end
 
     -- Calculate strafe angle delta
     local strafeDelta = CalcStrafe(wLocal)
