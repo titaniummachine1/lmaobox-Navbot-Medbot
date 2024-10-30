@@ -151,9 +151,8 @@ end
 
 -- Helper to attempt jumping if stuck for too long
 local function attemptJumpIfStuck(userCmd)
-    if G.Navigation.currentNodeTicks > 66 and WorkManager.attemptWork(66, "Unstuck_Jump") then
+    if G.Navigation.currentNodeTicks > 66 then
         userCmd:SetButtons(userCmd.buttons | IN_JUMP)
-        Log:Info("Attempting to jump to get unstuck.")
     end
 end
 
@@ -325,22 +324,7 @@ local function OnCreateMove(userCmd)
             return
         end
 
-        if WorkManager.attemptWork(66, "Pathfinding") then
-            Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
-            Navigation.ClearPath() -- Ensure we clear the current path before generating a new one
-            Navigation.FindPath(startNode, goalNode) -- Run pathfinding synchronously
-
-            -- Check if pathfinding succeeded
-            if G.Navigation.path and #G.Navigation.path > 0 then
-                G.Navigation.currentNodeinPath = #G.Navigation.path  -- Start at the last node
-                G.Navigation.currentNode = G.Navigation.path[G.Navigation.currentNodeinPath]
-                G.Navigation.currentNodePos = G.Navigation.currentNode.pos
-                Navigation.ResetTickTimer()
-                Log:Info("Path found.")
-            else
-                Log:Warn("No path found.")
-            end
-        end
+        Navigation.FindPath(startNode, goalNode) -- Run pathfinding synchronously
     end
 end
 

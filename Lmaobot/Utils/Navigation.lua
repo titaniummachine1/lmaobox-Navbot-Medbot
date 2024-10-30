@@ -6,6 +6,7 @@ local Navigation = {}
 local Common = require("Lmaobot.Common")
 local G = require("Lmaobot.Utils.Globals")
 local AStar = require("Lmaobot.Utils.A-Star")
+local WorkManager = require("Lmaobot.WorkManager")
 
 assert(G, "G is nil")
 
@@ -161,22 +162,41 @@ function Navigation.WalkTo(pCmd, pLocal, pDestination)
 end
 
 function Navigation.FindPath(startNode, goalNode)
-    if not startNode or not startNode.pos then
-        Log:Warn("Navigation.FindPath: startNode or startNode.pos is nil")
-        return
-    end
+    if WorkManager.attemptWork(66, "Pathfinding") then
+        Log:Info("Generating new path from node %d to node %d", startNode.id, goalNode.id)
+        Navigation.ClearPath() -- Ensure we clear the current path before generating a new one
+        Navigation.ResetTickTimer()
+    
+        if not startNode or not startNode.pos then
+            Log:Warn("Navigation.FindPath: startNode or startNode.pos is nil")
+            return false
+        end
 
-    if not goalNode or not goalNode.pos then
-        Log:Warn("Navigation.FindPath: goalNode or goalNode.pos is nil")
-        return
-    end
+        if not goalNode or not goalNode.pos then
+            Log:Warn("Navigation.FindPath: goalNode or goalNode.pos is nil")
+            return false
+        end
 
-    G.Navigation.path = AStar.Path(startNode, goalNode, G.Navigation.nodes, GetAdjacentNodes)
+        G.Navigation.path = AStar.Path(startNode, goalNode, G.Navigation.nodes)
 
-    if not G.Navigation.path or #G.Navigation.path == 0 then
-        Log:Error("Failed to find path from %d to %d!", startNode.id, goalNode.id)
-    else
-        Log:Info("Path found from %d to %d with %d nodes", startNode.id, goalNode.id, #G.Navigation.path)
+        if not G.Navigation.path or #G.Navigation.path == 0 then
+            Log:Error("Failed to find path from %d to %d!", startNode.id, goalNode.id)
+            return false
+        else
+            Log:Info("Path found from %d to %d with %d nodes", startNode.id, goalNode.id, #G.Navigation.path)
+        end
+
+        -- Check if pathfinding succeeded
+        if G.Navigation.path and #G.Navigation.path > 0 then
+            G.Navigation.currentNodeinPath = #G.Navigation.path  -- Start at the last node
+            G.Navigation.currentNode = G.Navigation.path[G.Navigation.currentNodeinPath]
+            G.Navigation.currentNodePos = G.Navigation.currentNode.pos
+            Log:Info("Path found.")
+        else
+            Log:Warn("No path found.")
+        end
+
+        return true
     end
 end
 

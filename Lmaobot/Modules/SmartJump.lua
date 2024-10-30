@@ -176,7 +176,7 @@ local function SmartJump(cmd)
                 end
             end
         end
-    elseif input.IsButtonDown(KEY_SPACE) then
+    elseif (cmd.buttons & IN_JUMP) == 1 then
         shouldJump = true
     end
 end
@@ -186,6 +186,7 @@ local function OnCreateMove(cmd)
     -- Get local player
     pLocal = entities.GetLocalPlayer()
     local wLocal = WPlayer.GetLocal()
+    predictedPosition = nil --remveo visuals when not needed
 
     if not pLocal or not pLocal:IsAlive() or not wLocal then
         jumpState = STATE_AWAITING_JUMP -- Previously STATE_IDLE
@@ -247,6 +248,7 @@ local function OnCreateMove(cmd)
         if not predData then return end
 
         predictedPosition = predData.pos[1]
+        print("XD")
 
         if not predData.onGround[1] or not onGround then
             SmartJump(cmd)
@@ -265,7 +267,7 @@ end
 -- OnDraw callback for visual debugging
 local function OnDraw()
     pLocal = entities.GetLocalPlayer()
-    if not pLocal then return end
+    if not pLocal or not predictedPosition then return end
 
     -- Draw predicted position
     local screenPredPos = client.WorldToScreen(predictedPosition)

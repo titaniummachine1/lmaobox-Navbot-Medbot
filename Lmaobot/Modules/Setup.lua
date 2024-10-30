@@ -13,9 +13,9 @@ local TaskManager = require("Lmaobot.TaskManager") -- Adjust the path as necessa
 --local loader = require("Lmaobot.Utils.loader")
 local Log = Common.Log
 
+require("Lmaobot.Modules.SmartJump")
 require("Lmaobot.Utils.Config")  -- Using Node module
 require("Lmaobot.Utils.Commands")
-require("Lmaobot.Modules.SmartJump")
 require("Lmaobot.Visuals")
 require("Lmaobot.Menu")
 
