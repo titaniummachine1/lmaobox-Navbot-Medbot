@@ -15,9 +15,9 @@ local onGround = true
 local isDucking = false
 local predictedPosition = Vector3(0, 0, 0)
 local jumpPeakPosition = Vector3(0, 0, 0)
-local shouldJump = false
 
 -- Constants
+local JUMP_FRACTION = 0.75  -- Fraction of the jump to consider for landing
 local HITBOX_MIN = Vector3(-23.99, -23.99, 0)
 local HITBOX_MAX = Vector3(23.99, 23.99, 82)
 local MAX_JUMP_HEIGHT = Vector3(0, 0, 72)   -- Maximum jump height vector
@@ -137,70 +137,76 @@ local function AdjustVelocity(cmd)
 end
 
 -- Smart jump logic
-local Jump_FRACTION = 0.75
-
 local function SmartJump(cmd)
-    if not pLocal then 
+    if not pLocal then
         print("Error: pLocal is nil. This could be due to the local player not being initialized or not being in a valid state.")
-        return 
+        return false
     end
-    if not G.Menu.Movement.Smart_Jump then return end
-
-    shouldJump = false
-
+    if not G.Menu.Movement.Smart_Jump then return false end
     if onGround then
-        -- Adjust the player's velocity based on the command input
+        -- Step 1: Adjust the player's velocity based on the command input
         local adjustedVelocity = AdjustVelocity(cmd)
-        -- Get the player's current position
-        local playerPos = pLocal:GetAbsOrigin()
-        -- Calculate the peak position and direction of a jump
-        local jumpPeakPos, jumpDirection = GetJumpPeak(adjustedVelocity, playerPos)
 
-        -- Calculate the horizontal distance to the jump peak position
-        local neededDistance = (jumpPeakPos - playerPos):Length2D()
+        -- Step 2: Get the player's current position
+        local playerPosition = pLocal:GetAbsOrigin()
 
-        -- Move the start position up by step height
-        local startTracePos = playerPos + Vector(0, 0, STEP_HEIGHT)
-        -- Calculate the end position by moving forward to the jump peak position
-        local endTracePos = startTracePos + (jumpDirection * neededDistance)
+        -- Step 3: Calculate the peak position and direction of a jump
+        local jumpPeakPosition, jumpDirection = GetJumpPeak(adjustedVelocity, playerPosition)
 
-        -- Trace a hull from the start position to the end position
-        local trace = engine.TraceHull(startTracePos, endTracePos, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-        local collisionPoint = trace.endpos
-        --global variable for visuals
-        predictedPosition = collisionPoint
+        -- Step 4: Calculate the horizontal distance needed to reach the jump peak
+        local horizontalDistanceToPeak = (jumpPeakPosition - playerPosition):Length2D()
 
-        -- If the trace hits something
-        if trace.fraction < 1 then
-            -- Perform a downward trace to snap to the ground
-            local downTraceStart = collisionPoint
-            local downTraceEnd = collisionPoint - Vector(0, 0, MAX_JUMP_HEIGHT)
-            local downTrace = engine.TraceHull(downTraceStart, downTraceEnd, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-            local groundPos = downTrace.endpos
-            predictedPosition = groundPos
+        -- Step 5: Move the start position up by step height to simulate stepping up
+        local traceStartPosition = playerPosition + STEP_HEIGHT --stepheight is vector3 alrady defined to save memory
 
-            -- Move forward slightly in the jump direction
-            local forwardPos = groundPos + jumpDirection
-            -- Perform a downward trace from 72 units above the forward position
-            local jumpTraceStart = forwardPos + Vector(0, 0, MAX_JUMP_HEIGHT)
-            local jumpTraceEnd = forwardPos
-            local jumpDownTrace = engine.TraceHull(jumpTraceStart, jumpTraceEnd, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
-            predictedPosition = jumpDownTrace.endpos
+        -- Step 6: Calculate the end position by moving forward towards the jump peak position
+        local traceEndPosition = traceStartPosition + (jumpDirection * horizontalDistanceToPeak)
+ 
 
-            -- Check if the down trace hits a walkable surface within a certain fraction
-            if jumpDownTrace.fraction > 0 and jumpDownTrace.fraction < Jump_FRACTION then
-                local normal = jumpDownTrace.plane
-                if IsSurfaceWalkable(normal) then
-                    shouldJump = true
+        -- Step 7: Trace a hull from the start position to the end position to detect obstacles
+        local forwardTrace = engine.TraceHull(traceStartPosition, traceEndPosition, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+   
+        -- Store the collision point for debugging visuals
+        local collisionPoint = forwardTrace.endpos
+        predictedPosition = collisionPoint  -- For visual debugging
+
+
+        -- Step 8: If the trace hits something before reaching the end position
+        if forwardTrace.fraction < 1 then
+            -- Step 9: Perform a downward trace from the collision point to find the ground
+            local downwardTraceStart = collisionPoint
+            local downwardTraceEnd = collisionPoint - MAX_JUMP_HEIGHT
+            local downwardTrace = engine.TraceHull(downwardTraceStart, downwardTraceEnd, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+
+            -- The ground position where we might land after the jump
+            local groundPosition = downwardTrace.endpos
+            predictedPosition = groundPosition  -- Update predicted position for visuals
+
+            -- Step 10: Move forward slightly in the jump direction to simulate landing ahead
+            local landingPosition = groundPosition + (jumpDirection * 10)  -- Move forward by 10 units
+
+            -- Step 11: Perform a downward trace from above the landing position to detect if we can land there
+            local landingTraceStart = landingPosition + MAX_JUMP_HEIGHT
+            local landingTraceEnd = landingPosition
+            local landingDownwardTrace = engine.TraceHull(landingTraceStart, landingTraceEnd, HITBOX_MIN, HITBOX_MAX, MASK_PLAYERSOLID_BRUSHONLY)
+
+            -- Update predicted position for visuals
+            predictedPosition = landingDownwardTrace.endpos
+
+            -- Step 12: Check if the down trace hits a walkable surface within a certain fraction
+            if landingDownwardTrace.fraction > 0 and landingDownwardTrace.fraction < JUMP_FRACTION then
+                if IsSurfaceWalkable(landingDownwardTrace.plane) then
+                    -- Step 13: If the surface is walkable, set shouldJump to true
+                    return true
                 end
             end
         end
-    elseif (cmd.buttons & IN_JUMP) == 1 then
-        shouldJump = true
+    elseif (cmd.buttons & IN_JUMP) == IN_JUMP then
+        -- If the jump button is already pressed, set shouldJump to true
+        return true
     end
+    return false
 end
-
-
 
 -- OnCreateMove callback
 local function OnCreateMove(cmd)
@@ -236,8 +242,7 @@ local function OnCreateMove(cmd)
     -- State machine for jump logic
     if jumpState == STATE_AWAITING_JUMP then
         -- Waiting for jump
-        SmartJump(cmd)
-        if shouldJump then
+        if SmartJump(cmd) then
             jumpState = STATE_CTAP -- Previously STATE_PREPARE_JUMP
         end
     elseif jumpState == STATE_CTAP then
@@ -272,8 +277,7 @@ local function OnCreateMove(cmd)
         print("XD")
 
         if not predData.onGround[1] or not onGround then
-            SmartJump(cmd)
-            if shouldJump then
+            if SmartJump(cmd) then
                 cmd:SetButtons(cmd.buttons & (~IN_DUCK))
                 cmd:SetButtons(cmd.buttons | IN_JUMP)
                 jumpState = STATE_CTAP -- Previously STATE_PREPARE_JUMP
@@ -306,8 +310,8 @@ local function OnDraw()
     end
 
     -- Draw bounding box at jump peak position
-    local minPoint = HITBOX_MIN + jumpPeakPosition
-    local maxPoint = HITBOX_MAX + jumpPeakPosition
+    local minPoint = HITBOX_MIN + predictedPosition
+    local maxPoint = HITBOX_MAX + predictedPosition
 
     -- Define the vertices of the bounding box
     local vertices = {
