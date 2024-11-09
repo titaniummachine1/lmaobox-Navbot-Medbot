@@ -9,19 +9,40 @@ local IsWalkable = {}
 --Limits
 local MAX_ITERATIONS = 37         -- Maximum number of iterations to prevent infinite loops
 
--- Constants
-local pLocal = entities.GetLocalPlayer()
-local PLAYER_HULL = {Min = Vector3(-24, -24, 0), Max = Vector3(24, 24, 82)} -- Player collision hull
-local MaxSpeed = pLocal:GetPropFloat("m_flMaxspeed") or 450 -- Default to 450 if max speed not available
-local gravity = client.GetConVar("sv_gravity") or 800 -- Gravity or default one
-local STEP_HEIGHT = pLocal:GetPropFloat("localdata", "m_flStepSize") or 18 -- Maximum height the player can step up
-local STEP_HEIGHT_Vector = Vector3(0, 0, STEP_HEIGHT)
-local MAX_FALL_DISTANCE = 250     -- Maximum distance the player can fall without taking fall damage
-local MAX_FALL_DISTANCE_Vector = Vector3(0, 0, MAX_FALL_DISTANCE)
-local STEP_FRACTION = STEP_HEIGHT / MAX_FALL_DISTANCE
+-- Constants (initially set to nil or default values)
+local pLocal = nil
+local PLAYER_HULL, MaxSpeed, gravity, STEP_HEIGHT, STEP_HEIGHT_Vector, MAX_FALL_DISTANCE, MAX_FALL_DISTANCE_Vector, STEP_FRACTION
+local MIN_STEP_SIZE = 300 * globals.TickInterval() -- Minimum step size to consider for ground checks
+
+-- Function to initialize constants when pLocal becomes available
+local function initializeConstants()
+    pLocal = entities.GetLocalPlayer()
+    if not pLocal then return end -- Exit if pLocal is still unavailable
+
+    PLAYER_HULL = {Min = Vector3(-24, -24, 0), Max = Vector3(24, 24, 82)} -- Player collision hull
+    MaxSpeed = pLocal:GetPropFloat("m_flMaxspeed") or 450 -- Default to 450 if max speed not available
+    MIN_STEP_SIZE = MaxSpeed * globals.TickInterval() -- Minimum step size to consider for ground checks
+    STEP_HEIGHT = pLocal:GetPropFloat("localdata", "m_flStepSize") or 18 -- Maximum height the player can step up
+    STEP_HEIGHT_Vector = Vector3(0, 0, STEP_HEIGHT)
+    MAX_FALL_DISTANCE = 250 -- Maximum distance the player can fall without taking fall damage
+    MAX_FALL_DISTANCE_Vector = Vector3(0, 0, MAX_FALL_DISTANCE)
+    STEP_FRACTION = STEP_HEIGHT / MAX_FALL_DISTANCE
+end
+
+-- Callback function ID for easy unregistration
+local function checkAndInitialize()
+    -- Attempt to initialize constants if not done already
+    initializeConstants()
+    -- Unregister this callback if pLocal is defined
+    if pLocal then
+        callbacks.Unregister("CreateMove", "initializeCheckCallback")
+    end
+end
+
+-- Register the callback to check every tick
+callbacks.Register("CreateMove", "initializeCheckCallback", checkAndInitialize)
 
 local UP_VECTOR = Vector3(0, 0, 1)
-local MIN_STEP_SIZE = MaxSpeed * globals.TickInterval() -- Minimum step size to consider for ground checks
 local MAX_SURFACE_ANGLE = 45       -- Maximum angle for ground surfaces
 
 -- Helper Functions
